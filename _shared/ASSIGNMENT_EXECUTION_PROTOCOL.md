@@ -29,6 +29,103 @@ Every implementation choice below maps to a JD keyword. If a choice is not on th
 
 ---
 
+## Design Principles — Apply Before Writing Any Schema or Route
+
+These five principles gate every implementation decision. If a choice conflicts with one, stop and reconsider.
+
+### 1. SRP — Single Responsibility per Endpoint
+
+Each endpoint = one state transition = one responsibility.
+
+| Endpoint | Responsibility | What it must NOT do |
+|---|---|---|
+| `POST /sessions` | Create session entity | Generate plan, touch LLM |
+| `POST /sessions/{id}/plan` | Decompose description → `[PlanStep]` with `patches: []` | Generate diffs, run guardrails |
+| `POST /sessions/{id}/patches` | Generate diff for one PlanStep → `PatchProposal` with `checks: []` | Run guardrails, modify other steps |
+| `POST /sessions/{id}/patches/{id}/check` | Run guardrails → `[GuardrailCheck]` | Generate new diffs, re-plan |
+| `GET /sessions/{id}` | Return accumulated state | Trigger any computation |
+
+**Smell check**: if a route calls both `generate()` and `check_patch()`, it violates SRP.
+
+**Schema SRP corollary**: domain models (storage/response) and LLM input schemas are different things.
+- Domain model: `PlanStep(id, description, target_files, patches=[])` — full state with children
+- LLM input schema: `PlanStepInput(description, target_files)` — only what the LLM generates
+- Never pass a domain model schema to the LLM if it contains nested children (id, created_at, child lists).
+  The LLM will fill them in, breaking the SRP of every downstream endpoint.
+
+---
+
+### 2. Deterministic Boundary
+
+The LLM is always sandwiched between deterministic code. Non-determinism is quarantined.
+
+```
+[deterministic in]  →  [LLM]  →  [deterministic out]
+  schema validation     proposes    schema validation
+  AGENTS.md load        only        guardrail regex
+  brand resolution               Pydantic parsing
+```
+
+Rules:
+- `src/guardrails.py` contains **zero** LLM calls. Regex only.
+- `src/llm.py` contains **zero** business logic. It is a transport layer.
+- LLM output is always parsed through Pydantic before it touches application state.
+- Use `tool_use` + `tool_choice={"type":"tool","name":"output"}` — never free-text JSON parsing.
+
+---
+
+### 3. YAGNI — You Aren't Gonna Need It
+
+Build exactly what the spec asks. Nothing more.
+
+| Temptation | Decision |
+|---|---|
+| SQLite / Postgres | In-memory dict. Persistence is P2 — document the swap path. |
+| Auth / API keys | Not in spec. Padding scope is a red flag for evaluators. |
+| LLM-as-judge for guardrails | Regex covers R1–R5 exactly. LLM-as-judge is P2. |
+| Retry loop / Evaluator-Optimizer | P2. Document it in README §If More Time. |
+| Multi-brand AGENTS.md routing | `brand` parameter in signature. Second brand file is P2. |
+| Caching | Not needed within a 90-min session lifetime. |
+
+If it is not in the spec and not a JD signal, it is P2 — mention in README, do not implement.
+
+---
+
+### 4. Workflow-first Design
+
+Design the workflow (sequence of state transitions) before designing schemas or routes.
+
+**Step 1 — Draw the workflow as a state machine first:**
+```
+∅ → Session(steps=[]) → Session(steps=[PlanStep(patches=[])]) → Session(steps=[PlanStep(patches=[PatchProposal(checks=[])])]) → Session(steps=[...(checks=[GuardrailCheck...])])
+```
+
+**Step 2 — Each arrow = one endpoint.**
+Each endpoint advances state by exactly one step. No endpoint skips a step or does two steps at once.
+
+**Step 3 — Schema flows from workflow, not from database convenience.**
+Ask: "what is the minimal input the LLM needs to do its job?" → that is the LLM input schema.
+Ask: "what is the full state a reviewing engineer needs?" → that is the domain model.
+
+---
+
+### 5. Explainability
+
+Every AI decision must be traceable by a human reviewer.
+
+| Layer | Explainability mechanism |
+|---|---|
+| Plan generation | `PlanStep.description` is human-readable; `target_files` is explicit |
+| Patch generation | `PatchProposal.diff` is a standard unified diff — reviewable in any diff tool |
+| Guardrail result | `GuardrailCheck.ruleId` + `reason` — cites the specific AGENTS.md rule |
+| Session audit | `Session.trace_id` — future OTEL/OAM hook |
+| AI vs human work | README §AI Leverage table — explicit, honest accounting |
+
+**Rule**: No GuardrailCheck result without a `reason` that names the specific rule (`per AGENTS.md R4`).
+A `result: "fail"` with `reason: "error"` is worse than useless — it is unactionable.
+
+---
+
 ## Meta-Principles (from Anthropic engineering blog + agent-architecture.md)
 
 - **Deterministic sandwich**: Every LLM call sits between deterministic input validation and deterministic output verification. The LLM proposes; the code decides.
@@ -192,6 +289,15 @@ curl -s -X POST localhost:8000/sessions/$SESSION/patches/$PATCH/check | python3 
 
 ### 1.2 Pydantic Schemas — data shape only, zero logic
 
+Two kinds of models. Do not confuse them.
+
+| Kind | Purpose | Rule |
+|---|---|---|
+| **LLM input schema** | What we ask the LLM to generate | Only fields the LLM creates. No id, no timestamps, no child lists. |
+| **Domain model** | Storage + API response | Full state including id, timestamps, nested children. |
+
+**Never pass a domain model schema to the LLM.** Child lists (`patches`, `checks`) will be filled in by the LLM, silently collapsing separate endpoints into one — violating SRP and Workflow-first.
+
 File: `src/models.py`
 
 ```python
@@ -204,16 +310,29 @@ Brand = Literal["efood", "glovo", "talabat"]
 Severity = Literal["BLOCK", "WARN", "INFO"]
 CheckResult = Literal["pass", "fail"]
 
+
+# ── LLM Input Schemas ─────────────────────────────────────────────────────────
+
+class PlanStepInput(BaseModel):
+    description: str
+    target_files: list[str]
+
+class PatchProposalInput(BaseModel):
+    diff: str
+
+
+# ── Domain Models ─────────────────────────────────────────────────────────────
+
 class GuardrailCheck(BaseModel):
-    ruleId: str                     # e.g. "R4"
+    ruleId: str
     severity: Severity
     result: CheckResult
-    reason: str                     # human-readable, shown to developer
+    reason: str                     # must cite specific rule: "per AGENTS.md R4"
 
 class PatchProposal(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     planStepId: UUID
-    diff: str                       # unified diff string
+    diff: str
     checks: list[GuardrailCheck] = []
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
@@ -233,13 +352,13 @@ class Session(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 ```
 
-**Success gate**: `uv run python -c "from src.models import Session, PlanStep, PatchProposal, GuardrailCheck"` exits 0.
+**Success gate**: `uv run python -c "from src.models import Session, PlanStep, PatchProposal, GuardrailCheck, PlanStepInput, PatchProposalInput"` exits 0.
 
-**JD signal check**:
-- `brand: Brand` — multi-brand field ✓
-- `trace_id` — OTEL/OAM hook ✓
-- `severity: Severity` — BLOCK/WARN/INFO ✓
-- `reason: str` — developer-facing explanation ✓
+**Design principle check**:
+- `PlanStepInput` / `PatchProposalInput` exist and are separate from domain models (SRP) ✓
+- `brand: Brand` — multi-brand (JD signal) ✓
+- `trace_id` — OTEL hook (JD signal) ✓
+- `reason: str` — explainability: cites AGENTS.md rule ✓
 
 ---
 
@@ -316,12 +435,19 @@ Files to create:
   src/main.py   — app factory + router registration + /health
 
 1. src/llm.py
-   - One function: generate(prompt: str, brand: str, schema: type[BaseModel]) -> BaseModel
-   - Loads AGENTS.md for the brand just-in-time (path: "efood/AGENTS.md" for brand="efood")
-   - Builds system prompt: "You are a code change planner. Follow these rules:\n{agents_md_content}"
-   - Calls anthropic.Anthropic().messages.create(model="claude-sonnet-4-6", ...)
-   - Instructs LLM to respond with JSON matching schema.model_json_schema()
-   - If ANTHROPIC_API_KEY is not set: return a deterministic mock response (do not crash)
+   - Two functions: generate(prompt, brand, schema) -> dict  and  generate_list(prompt, brand, schema) -> list[dict]
+   - Loads AGENTS.md for the brand just-in-time: Path(f"{brand}/AGENTS.md").read_text()
+   - Uses tool_use for structured output — NEVER free-text JSON parsing:
+       tools=[{"name":"output","description":"...","input_schema": schema.model_json_schema()}]
+       tool_choice={"type":"tool","name":"output"}
+       result = response.content[0].input   # already a dict, no json.loads needed
+   - max_tokens=4096 minimum
+   - generate_list wraps schema in: {"type":"object","properties":{"items":{"type":"array","items":schema.model_json_schema()}},"required":["items"]}
+     and returns result["items"]
+   - If ANTHROPIC_API_KEY not set: return deterministic mock (do not crash)
+   - CRITICAL: routes call generate(prompt, brand, PlanStepInput) and generate(prompt, brand, PatchProposalInput)
+     — NEVER generate(prompt, brand, PlanStep) or generate(prompt, brand, PatchProposal)
+     — Domain models contain child lists; passing them to LLM violates SRP
    - Functions ≤ 30 lines. No print(). Use logging.
 
 2. src/routes.py — all routes use sessions: dict[str, Session] from src/store.py
@@ -511,6 +637,18 @@ Fill every blank in the skeleton. Then run the JD alignment check below.
 | Context integration framing | README intro: "DH-aware integration layer" not "build an IDE" | ☐ |
 | Developer productivity / friction | README §1 opens with "what this replaces" — the manual workflow | ☐ |
 | Measurement / KPI | README §Domain Model mentions Human/AI code ratio as downstream metric | ☐ |
+
+### Design Principles Check (run before JD alignment)
+
+| Principle | Verification |
+|---|---|
+| SRP — POST /plan returns `patches: []` | `curl .../plan \| python3 -c "import json,sys; assert json.load(sys.stdin)[0]['patches']==[]"` |
+| SRP — POST /patches returns `checks: []` | Same pattern for checks field |
+| SRP — LLM input schemas exist and are separate | `grep -n "PlanStepInput\|PatchProposalInput" src/models.py` shows two classes |
+| Deterministic Boundary — no LLM call in guardrails.py | `grep -n "anthropic\|client\." src/guardrails.py` returns nothing |
+| YAGNI — no unspecified features | No SQLite, no auth, no retry loop unless spec asked |
+| Workflow-first — GET /sessions/{id} shows accumulated state | Full nested state only after all endpoints called in sequence |
+| Explainability — reason cites rule | `grep "per AGENTS.md" src/guardrails.py` returns one line per rule |
 
 **All 10 green = submit. Any red = fix README or add one line of code.**
 
