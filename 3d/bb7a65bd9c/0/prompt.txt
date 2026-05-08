@@ -1,0 +1,37 @@
+server/app/
+├── api/v1/endpoints/report.py      # API 엔드포인트
+├── service/
+│   ├── report.py                   # 리포트 구독 설정
+│   ├── report_generator.py         # LLM 리포트 생성 (데이터 수집 + Prompt Studio 호출)
+│   ├── chart.py                    # matplotlib 차트 생성
+│   └── slack.py                    # Slack Block Kit 포맷팅 + 발송
+├── crud/report.py                  # DB CRUD
+├── models/report.py                # SQLAlchemy 모델
+└── schemas/report.py               # Pydantic 스키마 이런식으로 레포지토리 구조가 처음부터 짜이면 좋겠어 그리고 api 에서 원래 @router.post("/sessions/{session_id}/plan", response_model=list[PlanStepOut])
+ 이런거 쓰나? 흠 .. python skill 하나 만들어주면 좋겠어 python fastapi 코드 작성할때 고려할 수 있게 
+최신 fastapi best practice 이면 좋겠어 pydantic 이런거 쓰고 
+
+  - 신규 서비스 풀스택: fastapi/full-stack-fastapi-template
+  - 백엔드 API만: benavlabs/FastAPI-boilerplate
+  - 팀 컨벤션 참고: zhanymkanov/fastapi-best-practices
+  - 큰 서비스 구조 참고: fastapi-practices/fastapi_best_architecture
+
+---
+
+실무처럼 짜면 좋겠어 그리고 스킬이어서 자동으로 로딩되면 좋겠고 처음 설계할때부터 그러면 좋겠는데 /assignment 에서 처음 설계할때 호출하는 스킬들 뭐였지?
+
+---
+
+오키 main에 push해
+
+---
+
+전역으로 해줘
+
+---
+
+아니 내 전역 설정으로하고싶어 명령어 알려줘 ~/.claude에 하면 되는거아니야?
+
+---
+
+그리고 push할때 claude authored by 안쓰면 좋겠어 그건 전역 설정해줘. 그리고 이 레포에는 필요한 것들 rules로 만들어서 main에 push할래
