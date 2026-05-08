@@ -1,0 +1,200 @@
+/assignment
+
+---
+
+과제는 이거야 
+From: agentic-ides-hiring@deliveryhero.com
+Subject: Take-home — Agentic IDE Session Backend (Mini)
+
+Hi,
+
+Thanks for moving forward with us. Below is a scoped technical exercise.
+Budget: 90 minutes (we usually run a 4-hour version; this is a compressed
+take-home for early-stage screening). Please send a GitHub repo link when done.
+
+──────────────────────────────────────────────────────────────────────
+Background
+──────────────────────────────────────────────────────────────────────
+Our Agentic IDEs team is building backends that power AI-assisted coding
+sessions across Delivery Hero's brands (efood, Glovo, Talabat, foodora,
+foodpanda). Each brand maintains its own AGENTS.md — an "Engineering
+Manifesto" that codifies what AI-generated code is allowed to look like.
+
+We need a backend service that hosts these sessions: a developer asks for
+a change, the LLM proposes a patch, our guardrails decide whether the
+patch is safe to merge against the brand's AGENTS.md rules.
+
+──────────────────────────────────────────────────────────────────────
+Task
+──────────────────────────────────────────────────────────────────────
+Build an HTTP service that exposes the following workflow for ONE brand:
+efood. The service should:
+
+1. POST /sessions
+   - Create a session for a developer request (title, description, brand).
+
+2. POST /sessions/{id}/plan
+   - Given the session description, return a list of PlanStep
+     (description + target files). The LLM proposes; you decide the
+     contract.
+
+3. POST /sessions/{id}/patches
+   - Given a PlanStep, return a PatchProposal (a unified diff string).
+     The LLM proposes; you decide the contract.
+
+4. POST /sessions/{id}/patches/{patchId}/check
+   - Run guardrails against the patch. Return a list of GuardrailCheck
+     (ruleId, severity, result, reason). Guardrails MUST consult the
+     brand's AGENTS.md.
+
+5. GET /sessions/{id}
+   - Return the full session state for a reviewing engineer.
+
+──────────────────────────────────────────────────────────────────────
+Inputs we provide
+──────────────────────────────────────────────────────────────────────
+
+(A) efood/AGENTS.md — five rules:
+  R1. All Python imports must be absolute. (syntactic)
+  R2. No direct calls to `os.system` or `subprocess` without explicit
+      review. (security)
+  R3. Public functions must have docstrings. (style)
+  R4. Logging must use the `efood.logging` module — never `print`. (brand)
+  R5. New external HTTP calls must go through `efood.http_client`. (brand)
+
+(B) Sample PR diff to test against (sample_diff.patch):
+  - Adds a new module `pricing/discount.py` with:
+    * `from .utils import calc` (passes R1)
+    * `def apply_discount(order, pct):` with docstring (passes R3)
+    * `print(f"Discount applied: {pct}")` (VIOLATES R4)
+    * `requests.get(provider_url)` (VIOLATES R5)
+
+We expect at least R4 and R5 to flag.
+
+──────────────────────────────────────────────────────────────────────
+What we evaluate
+──────────────────────────────────────────────────────────────────────
+- A working repo (`how-to-run` in under a minute).
+- A README that explains decisions, trade-offs, and what you didn't do.
+- Code we can read on a phone screen — we don't grade line count.
+- How you used AI to build this is part of the evaluation, not a secret.
+
+We do NOT specify: storage, auth, error model, async vs. sync, how
+strictly to enforce rules, what "severity" means, or how to mock the
+LLM. Decide and explain.
+
+Good luck. 
+그리고 한글로 이야기해줘
+
+---
+
+아니 참고하지마 처음부터 만드는거야
+
+---
+
+1. body에 두는게 좋을거같아 
+2. 고민되는데 어떻게 생각해? 
+3, pass 결과를 다 보여준다는게 무슨 말이야? 
+4. mock 응답 있으면 api key 
+5. 음 patchId로만 조회가능하지않아? sessionId까지 필요하나? 
+바꿀 수 있으면 바꿔도 되려나
+
+---
+
+응 동의해
+
+---
+
+근데   실패 비용: guardrail이 print() 를 놓치면 brand policy 위반 코드가 production에 배포됨. check는             
+  deterministic이어야 해 — LLM은 쓰면 안 돼.  이거 무슨 말이야?
+
+---
+
+응 좋아
+
+---
+
+잠깐만, 지금 설계 끝난거야? /iterate 돈거야? 뭐지
+
+---
+
+아니 codex cli로 돌리면 되잖아. /feature 처럼.. 참고해서 바꿔줘
+
+---
+
+아니 workflow 자체를 그렇게 하도록 내가 명령하지 않아도 그렇게 바꿔줘
+
+---
+
+- "Run /iterate" → 제거 (애매했음)                                                                         왜 제거해? /iterate는 돌리고싶은데 codex로 구현하고싶은거지
+
+---
+
+오키 근데 PLAN.md랑 builder.md를 이거 agent야? agent면 /assignment 에서 쓸 수 있는게 좋은거같은데 어때?
+
+---
+
+응 만들어줘
+
+---
+
+설계 한번 쫙 점검해야지
+
+---
+
+응 수정해줘
+
+---
+
+좋은데, 과제 설계는 어딨어? 과제 설계를 봐야하는데
+
+---
+
+굳 그리고 /assignment 에서 설계 다음에 이렇게 설계를 설명하는 시간이 있으면 좋겠어.
+
+---
+
+git@github.com:addyosmani/agent-skills.git 이거 분석해서 필요한 것만 가져오자 특히 설계단계에서 엣지 케이스를 찾거나 락이라면 tradeoff를 고려해서 옵션을 리스트화하고 제안해주는것, 시니어 개발자로서 완성도를 위해 생각할 수 분있는 부분
+
+---
+
+/iterate
+
+---
+
+근데 worktree로 만든거지 ? codex ? 왤케 느리지 
+그리고 왜 spec이 다른거야? 다르지 않아야돼
+
+---
+
+codex도 worktree로 실행하게 해줘 그리고 spec 이탈 문제: 이게 진짜 문제야.
+
+  spec.md에 레이어/패턴 규칙은 있었는데 정확한 필드명이 없었어. 그래서 Codex가 자기 판단으로 채웠어: -> 이런 문제가 일어나지 않도록 spec 작성을 꼼꼼하게 해줘. /assignment workflow에 추가하거나 agent를 추가하거나.. 그리고 readme에도 반영하는 step이 필요해  더이상 그런 spec 이탈 문제가 발생하지 않게 agent 추가해줘 그리고 Tester도 codex cli로 실행할래
+
+---
+
+아니 구현중에 나한테 물어봐야하는데 그게 안되는데...
+
+---
+
+아니면 codex로 넘어가서 할라고
+
+---
+
+그럼 난 어떤식으로 하면 돼? /assignment 호출하고 ?
+
+---
+
+3번에서 정확히 어떻게 하면 돼? 작업 이어서 할 수 있도록 codex에서 command 만들어줘 codex에서 command만 바로 실행할 수 있도록
+
+---
+
+아니 근데 그럼 codex는 뭘 구현해야하는지 어떻게 알아? claude가 넘겨줘?
+
+---
+
+skill이 편하지
+
+---
+
+그러자

@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "2b8b903be025",
+  "strategy": "manual-commit",
+  "branch": "blushing-summer",
+  "checkpoints_count": 11,
+  "files_touched": [
+    "case-01-session-second/README.md",
+    "case-01-session-second/efood/AGENTS.md",
+    "case-01-session-second/pyproject.toml",
+    "case-01-session-second/src/guardrails.py",
+    "case-01-session-second/src/llm.py",
+    "case-01-session-second/src/main.py",
+    "case-01-session-second/src/models.py",
+    "case-01-session-second/src/routes.py",
+    "case-01-session-second/src/service.py",
+    "case-01-session-second/src/store.py",
+    "case-01-session-second/tests/conftest.py",
+    "case-01-session-second/tests/test_e2e.py",
+    "case-01-session-second/tests/test_guardrails.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2b/8b903be025/0/metadata.json",
+      "transcript": "/2b/8b903be025/0/full.jsonl",
+      "content_hash": "/2b/8b903be025/0/content_hash.txt",
+      "prompt": "/2b/8b903be025/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2238,
+    "cache_creation_tokens": 138325,
+    "cache_read_tokens": 11145077,
+    "output_tokens": 76280,
+    "api_call_count": 116
+  }
+}
