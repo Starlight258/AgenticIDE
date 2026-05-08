@@ -6,7 +6,17 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from src import llm
-from src.models import Brand, GuardrailCheck, PatchProposal, PatchProposalInput, PlanStep, PlanStepInput, Session
+from src.models import (
+    Brand,
+    GuardrailCheck,
+    PatchProposal,
+    PatchProposalInput,
+    PatchProposalOut,
+    PlanStep,
+    PlanStepInput,
+    PlanStepOut,
+    Session,
+)
 from src.store import sessions
 
 logger = logging.getLogger(__name__)
@@ -33,8 +43,8 @@ def create_session(body: CreateSessionBody) -> Session:
     return session
 
 
-@router.post("/sessions/{session_id}/plan", response_model=list[PlanStep])
-def create_plan(session_id: UUID) -> list[PlanStep]:
+@router.post("/sessions/{session_id}/plan", response_model=list[PlanStepOut])
+def create_plan(session_id: UUID) -> list[PlanStepOut]:
     """Generate a plan for the session and attach steps."""
     session = _get_session(session_id)
     prompt = (
@@ -45,11 +55,11 @@ def create_plan(session_id: UUID) -> list[PlanStep]:
     steps = [PlanStep(**step) for step in raw_steps]
     session.steps = steps
     logger.info("Generated %d plan steps for session %s", len(steps), session_id)
-    return steps
+    return [PlanStepOut(id=s.id, description=s.description, target_files=s.target_files) for s in steps]
 
 
-@router.post("/sessions/{session_id}/patches", response_model=PatchProposal)
-def create_patch(session_id: UUID, body: CreatePatchBody) -> PatchProposal:
+@router.post("/sessions/{session_id}/patches", response_model=PatchProposalOut)
+def create_patch(session_id: UUID, body: CreatePatchBody) -> PatchProposalOut:
     """Generate a patch proposal for a plan step."""
     session = _get_session(session_id)
     step = _get_step(session, body.planStepId)
@@ -62,7 +72,7 @@ def create_patch(session_id: UUID, body: CreatePatchBody) -> PatchProposal:
     patch = PatchProposal(**raw)
     step.patches.append(patch)
     logger.info("Generated patch %s for step %s", patch.id, step.id)
-    return patch
+    return PatchProposalOut(id=patch.id, planStepId=patch.planStepId, diff=patch.diff, created_at=patch.created_at)
 
 
 @router.post(

@@ -19,6 +19,21 @@ class PatchProposalInput(BaseModel):
     diff: str
 
 
+class PlanStepOut(BaseModel):
+    """Response schema for POST /plan — no patches, signals SRP."""
+    id: UUID
+    description: str
+    target_files: list[str]
+
+
+class PatchProposalOut(BaseModel):
+    """Response schema for POST /patches — no checks, signals SRP."""
+    id: UUID
+    planStepId: UUID
+    diff: str
+    created_at: datetime
+
+
 class GuardrailCheck(BaseModel):
     ruleId: str
     severity: Severity
