@@ -77,6 +77,15 @@ def test_plan_attaches_steps_to_session():
     assert len(steps) >= 1
     assert steps[0]["description"]
     assert steps[0]["target_files"]
+    assert "patches" not in steps[0], "POST /plan must not return patches (Response Shape = Workflow Signal)"
+
+
+def test_patch_response_has_no_checks():
+    """POST /patches must not return checks — that responsibility belongs to /check."""
+    session_id, step_id, _ = _full_workflow()
+    r = client.post(f"/sessions/{session_id}/steps/{step_id}/patches")
+    assert r.status_code == 200
+    assert "checks" not in r.json(), "POST /patches must not return checks (SRP)"
 
 
 def test_r4_print_is_block_in_e2e():
