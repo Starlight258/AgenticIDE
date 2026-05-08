@@ -1,0 +1,1 @@
+git@github.com:anthropics 여기서 /assignment에서 쓸만한 좋은 agent 나 rules 있나 찾아봐 그리고 적용해줘
