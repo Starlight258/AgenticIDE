@@ -170,6 +170,23 @@ A `result: "fail"` with `reason: "error"` is worse than useless — it is unacti
 - **README is the deliverable**: Code is proof it works. The README demonstrates you think like a system designer.
 - **DH framing**: This service is a "DH-aware integration layer" — it augments Cursor/Claude Code with brand context and guardrails. It is not a replacement IDE.
 
+## Slash Command Contract — `/assignment`
+
+The project command lives in both `.claude/commands/assignment.md` and
+`case-01-session-backend/.claude/commands/assignment.md`. Keep them in sync.
+
+Pattern borrowed from Anthropic's `anthropics/claude-code` project commands:
+
+- Use command frontmatter (`description`, `allowed-tools`) so the command advertises its purpose and narrows tool use.
+- Inject live context at invocation time (`git status`, assignment text, protocol, AGENTS.md) instead of relying on stale memory.
+- Treat `$ARGUMENTS` as extra user input, not as a replacement for the assignment or protocol.
+- Start with a todo list and update it as phases complete.
+- Never invent requirements. If the assignment is ambiguous, document the assumption rather than expanding scope.
+- Be conservative with automation: do not push, open PRs, or post external comments unless the user explicitly asks.
+- End every `/assignment` run with files changed, verification run, and remaining checks.
+
+If a command behavior conflicts with this protocol, the protocol wins.
+
 ---
 
 ## Phase 0 — Decompose (0:00 – 0:05)
