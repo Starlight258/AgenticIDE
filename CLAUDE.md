@@ -1,51 +1,29 @@
-# AgenticIDE — Claude Code Rules
-
-## Commit Messages
-- No `Co-Authored-By` line
-- Format: `type: short description` (feat / fix / refactor / test / docs / chore)
-- Message describes WHY, not what
+# AgenticIDE — Project Context
 
 ## Workflow
-- Use `/assignment <task>` for any new feature or assignment end-to-end
-- Use `/think <decision>` before making any non-trivial design decision
-- Use `/fastapi` constraints whenever touching Python FastAPI code
-- Codex handles implementation (Phase 2 of /assignment); Claude handles design and review
-
-## Code Rules (Python / FastAPI)
-- Layer order: `api/` → `service/` → `crud/` — routes never import crud directly
-- 3-tier schemas: `{Model}Create` (input) / `{Model}Out` (response) / SQLAlchemy model (DB)
-- Pydantic v2: `ConfigDict(from_attributes=True)`, `model_dump()`, `model_validate()`
-- No `HTTPException` inside `service/` — raise domain exceptions, handle in `main.py`
-- `Annotated` aliases for all repeated `Depends()` — define in `api/deps.py`
-- No `print()` anywhere — use `logging`
-- LLM calls: always use `tool_use` + `tool_choice`, `max_tokens≥4096`, never `json.loads()` on raw response
-
-## Test Rules
-- Every response shape contract must have an assert: `assert "patches" not in response`
-- E2E tests use file-based JSON parsing, not inline `python3 -c` pipe
-- No mocking the DB in integration tests
-
-## Before Every Push
-```bash
-uv run pytest -v       # 0 failed
-uv run ruff check src/ # clean
-```
-README must match code — no false claims in architecture diagram.
+- `/assignment <task>` — end-to-end: design → Codex implement → README polish → gate
+- `/think <decision>` — before any non-trivial design decision
+- `/fastapi` — FastAPI best practices reference
 
 ## Repository Structure
 ```
 AgenticIDE/
 ├── _shared/
-│   ├── ASSIGNMENT_EXECUTION_PROTOCOL.md  # execution playbook
+│   ├── ASSIGNMENT_EXECUTION_PROTOCOL.md  # execution playbook for take-home assignments
 │   └── LESSONS_LEARNED.md               # post-mortem notes
-└── case-01-session-backend/             # DH take-home assignment
+└── case-01-session-backend/             # DH Agentic IDEs IC1 take-home
     ├── src/
-    │   ├── models.py    # 3-tier Pydantic schemas
-    │   ├── routes.py    # FastAPI routes
-    │   ├── llm.py       # Anthropic SDK (tool_use only)
-    │   ├── guardrails.py # regex R1-R5, zero LLM calls
-    │   └── store.py     # in-memory session store
+    │   ├── models.py      # 3-tier Pydantic schemas
+    │   ├── routes.py      # FastAPI routes (api/ → service/ → crud/ pattern)
+    │   ├── llm.py         # Anthropic SDK — tool_use only
+    │   ├── guardrails.py  # deterministic regex R1–R5, zero LLM calls
+    │   └── store.py       # in-memory session store
     └── tests/
         ├── test_guardrails.py
         └── test_e2e.py
 ```
+
+## Code and commit rules live in ~/.claude/rules/
+- `python-fastapi.md` — applies to all *.py files
+- `tests.md` — applies to test_*.py files
+- `commits.md` — applies globally
