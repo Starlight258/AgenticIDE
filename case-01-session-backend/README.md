@@ -25,23 +25,26 @@ Developer Request
         ▼
 [POST /sessions]
   brand: "efood" → resolves efood/AGENTS.md path         ← deterministic
+  → returns: {id, title, description, brand, trace_id, steps: [], created_at}
 
 [POST /sessions/{id}/plan]
   load efood/AGENTS.md just-in-time                       ← deterministic
   → LLM(claude-sonnet-4-6): decompose → [PlanStep]       ← non-deterministic, schema-constrained
   → validate: target_files non-empty                      ← deterministic
+  → returns: [{id, description, target_files}]            ← no patches (Response Shape = Workflow Signal)
 
-[POST /sessions/{id}/patches]
+[POST /sessions/{id}/steps/{step_id}/patches]
   → LLM: generate unified diff for one PlanStep           ← non-deterministic
   → store as PatchProposal(diff=...)
+  → returns: {id, planStepId, diff, created_at}           ← no checks (SRP: patch ≠ check)
 
-[POST /sessions/{id}/patches/{id}/check]
+[POST /sessions/{id}/steps/{step_id}/patches/{patch_id}/check]
   → load efood/AGENTS.md just-in-time                     ← deterministic
   → for each rule R1–R5: regex check → GuardrailCheck     ← deterministic
   → any BLOCK? → merge gated                              ← deterministic
 
 [GET /sessions/{id}]
-  → full state: steps + patches + checks + trace_id
+  → full state: steps + patches + checks + trace_id       ← only endpoint with nested children
 ```
 
 The LLM only performs extraction and proposal generation.
@@ -82,6 +85,18 @@ Session 1—* PlanStep 1—* PatchProposal 1—* GuardrailCheck
 Severity ladder: `BLOCK` (security/brand violation) > `WARN` (style) > `INFO` (suggestion).
 A patch with any `BLOCK` check cannot be merged. This feeds the **Human/AI code ratio KPI**
 by flagging which AI-generated diffs required human intervention before merge.
+
+### Three-tier schema design
+
+Three kinds of Pydantic models serve distinct purposes:
+
+| Tier | Examples | Rule |
+|------|----------|------|
+| **LLM input schemas** | `PlanStepInput`, `PatchProposalInput` | Only fields the LLM generates — no id, timestamps, or child lists |
+| **Response schemas** | `PlanStepOut`, `PatchProposalOut` | Only fields that endpoint created — response shape = workflow signal |
+| **Domain models** | `Session`, `PlanStep`, `PatchProposal` | Full nested state — storage and `GET /sessions/{id}` only |
+
+`PlanStepOut` omits `patches` because `POST /plan` does not create patches — an empty list would falsely imply that responsibility belongs to the planning step. `PatchProposalOut` omits `checks` for the same reason. The full domain model with all nested children is only surfaced through `GET /sessions/{id}`.
 
 ---
 
@@ -151,13 +166,11 @@ STEP=$(curl -s -X POST localhost:8000/sessions/$SESSION/plan \
   | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['id'])")
 
 # 3. patch
-PATCH=$(curl -s -X POST localhost:8000/sessions/$SESSION/patches \
-  -H "Content-Type: application/json" \
-  -d "{\"planStepId\":\"$STEP\"}" \
+PATCH=$(curl -s -X POST localhost:8000/sessions/$SESSION/steps/$STEP/patches \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
 
 # 4. check — expect R4 (print) and R5 (requests) to flag BLOCK
-curl -s -X POST localhost:8000/sessions/$SESSION/patches/$PATCH/check \
+curl -s -X POST localhost:8000/sessions/$SESSION/steps/$STEP/patches/$PATCH/check \
   | python3 -m json.tool
 
 # 5. full state

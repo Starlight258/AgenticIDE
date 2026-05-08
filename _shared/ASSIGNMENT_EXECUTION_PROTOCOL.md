@@ -41,8 +41,8 @@ Each endpoint = one state transition = one responsibility.
 |---|---|---|
 | `POST /sessions` | Create session entity | Generate plan, touch LLM |
 | `POST /sessions/{id}/plan` | Decompose description → `[PlanStep]` with `patches: []` | Generate diffs, run guardrails |
-| `POST /sessions/{id}/patches` | Generate diff for one PlanStep → `PatchProposal` with `checks: []` | Run guardrails, modify other steps |
-| `POST /sessions/{id}/patches/{id}/check` | Run guardrails → `[GuardrailCheck]` | Generate new diffs, re-plan |
+| `POST /sessions/{id}/steps/{step_id}/patches` | Generate diff for one PlanStep → `PatchProposal` with `checks: []` | Run guardrails, modify other steps |
+| `POST /sessions/{id}/steps/{step_id}/patches/{patch_id}/check` | Run guardrails → `[GuardrailCheck]` | Generate new diffs, re-plan |
 | `GET /sessions/{id}` | Return accumulated state | Trigger any computation |
 
 **Smell check**: if a route calls both `generate()` and `check_patch()`, it violates SRP.
@@ -88,6 +88,41 @@ Build exactly what the spec asks. Nothing more.
 | Caching | Not needed within a 90-min session lifetime. |
 
 If it is not in the spec and not a JD signal, it is P2 — mention in README, do not implement.
+
+**YAGNI applies to response shape too — Response Schema = Workflow Signal.**
+
+The shape of a response communicates what the endpoint did. Empty child collections in a response are not "free" — they send a false signal.
+
+```
+# Wrong: POST /plan returns this
+{"id": "...", "description": "...", "target_files": [...], "patches": []}
+#                                                           ^^^^^^^^^^
+#                                              implies patches are part of planning
+
+# Right: POST /plan returns this
+{"id": "...", "description": "...", "target_files": [...]}
+# shape says: "I produced a plan step. patches are someone else's job."
+```
+
+Rule: **each endpoint's response schema contains only the fields that endpoint created.**
+Use a dedicated response model (e.g. `PlanStepOut`, `PatchProposalOut`) without child lists — do not reuse the full domain model as the response type.
+
+```python
+# models.py — response schemas (one per endpoint that creates a new entity)
+class PlanStepOut(BaseModel):
+    id: UUID
+    description: str
+    target_files: list[str]
+    # no patches — POST /plan does not create patches
+
+class PatchProposalOut(BaseModel):
+    id: UUID
+    planStepId: UUID
+    diff: str
+    # no checks — POST /patches does not run guardrails
+```
+
+The full domain model (`PlanStep` with `patches`, `PatchProposal` with `checks`) is only used in `GET /sessions/{id}` — the accumulated state view.
 
 ---
 
@@ -289,14 +324,17 @@ curl -s -X POST localhost:8000/sessions/$SESSION/patches/$PATCH/check | python3 
 
 ### 1.2 Pydantic Schemas — data shape only, zero logic
 
-Two kinds of models. Do not confuse them.
+Three kinds of models. Do not confuse them.
 
 | Kind | Purpose | Rule |
 |---|---|---|
 | **LLM input schema** | What we ask the LLM to generate | Only fields the LLM creates. No id, no timestamps, no child lists. |
-| **Domain model** | Storage + API response | Full state including id, timestamps, nested children. |
+| **Response schema (Out)** | What each endpoint returns to the caller | Only fields that endpoint created. No child lists belonging to later endpoints. |
+| **Domain model** | Storage + `GET /sessions/{id}` full state | Nested children: steps → patches → checks. Never use as LLM input or single-step response. |
 
 **Never pass a domain model schema to the LLM.** Child lists (`patches`, `checks`) will be filled in by the LLM, silently collapsing separate endpoints into one — violating SRP and Workflow-first.
+
+**Never return a domain model directly from a mutating endpoint.** Returning `PlanStep` (which includes `patches: []`) from `POST /plan` falsely implies the plan step owns patching — a structural lie in the API contract.
 
 File: `src/models.py`
 
@@ -319,6 +357,22 @@ class PlanStepInput(BaseModel):
 
 class PatchProposalInput(BaseModel):
     diff: str
+
+
+# ── Response Schemas (Out) ────────────────────────────────────────────────────
+
+class PlanStepOut(BaseModel):
+    """POST /plan response — no patches (Response Shape = Workflow Signal)."""
+    id: UUID
+    description: str
+    target_files: list[str]
+
+class PatchProposalOut(BaseModel):
+    """POST /patches response — no checks (SRP: patch ≠ check)."""
+    id: UUID
+    planStepId: UUID
+    diff: str
+    created_at: datetime
 
 
 # ── Domain Models ─────────────────────────────────────────────────────────────
@@ -352,10 +406,11 @@ class Session(BaseModel):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 ```
 
-**Success gate**: `uv run python -c "from src.models import Session, PlanStep, PatchProposal, GuardrailCheck, PlanStepInput, PatchProposalInput"` exits 0.
+**Success gate**: `uv run python -c "from src.models import Session, PlanStep, PatchProposal, GuardrailCheck, PlanStepInput, PatchProposalInput, PlanStepOut, PatchProposalOut"` exits 0.
 
 **Design principle check**:
 - `PlanStepInput` / `PatchProposalInput` exist and are separate from domain models (SRP) ✓
+- `PlanStepOut` / `PatchProposalOut` exist and omit child lists (Response Shape = Workflow Signal) ✓
 - `brand: Brand` — multi-brand (JD signal) ✓
 - `trace_id` — OTEL hook (JD signal) ✓
 - `reason: str` — explainability: cites AGENTS.md rule ✓
@@ -380,11 +435,11 @@ Developer Request
   → LLM(claude-sonnet-4-6): decompose → [PlanStep] ← non-deterministic, schema-constrained
   → validate: target_files non-empty               ← deterministic
 
-[POST /sessions/{id}/patches]
+[POST /sessions/{id}/steps/{step_id}/patches]
   → LLM: generate unified diff for PlanStep        ← non-deterministic
   → store as PatchProposal(diff=...)
 
-[POST /sessions/{id}/patches/{id}/check]
+[POST /sessions/{id}/steps/{step_id}/patches/{patch_id}/check]
   → load AGENTS.md for brand just-in-time          ← deterministic
   → for each rule: regex check → GuardrailCheck    ← deterministic
   → any BLOCK? → merge gated                       ← deterministic
@@ -452,21 +507,29 @@ Files to create:
 
 2. src/routes.py — all routes use sessions: dict[str, Session] from src/store.py
 
+   Use three-tier schemas — NEVER return a domain model from a mutating endpoint:
+   - LLM calls: generate(prompt, brand, PlanStepInput), generate(prompt, brand, PatchProposalInput)
+   - POST /plan response_model=list[PlanStepOut] — return PlanStepOut per step (no patches field)
+   - POST /patches response_model=PatchProposalOut — return PatchProposalOut (no checks field)
+   - GET /sessions/{id} response_model=Session — only endpoint that returns full nested state
+
    POST /sessions
      body: {title, description, brand}
      → Session(title=..., description=..., brand=...)
      → store in dict, return session
 
    POST /sessions/{id}/plan
-     → call generate() → list[PlanStep]
-     → attach to session.steps, return steps
+     → call generate_list(prompt, brand, PlanStepInput) → list[dict]
+     → steps = [PlanStep(**s) for s in raw_steps]; attach to session.steps
+     → return [PlanStepOut(id=s.id, description=s.description, target_files=s.target_files) for s in steps]
 
-   POST /sessions/{id}/patches
-     body: {planStepId}
-     → call generate() → PatchProposal
-     → attach to matching step.patches, return proposal
+   POST /sessions/{id}/steps/{step_id}/patches
+     step_id is a path param — no request body needed
+     → call generate(prompt, brand, PatchProposalInput) → dict
+     → patch = PatchProposal(**raw, planStepId=step.id); attach to step.patches
+     → return PatchProposalOut(id=patch.id, planStepId=patch.planStepId, diff=patch.diff, created_at=patch.created_at)
 
-   POST /sessions/{id}/patches/{patchId}/check
+   POST /sessions/{id}/steps/{step_id}/patches/{patch_id}/check
      → import check_patch from src.guardrails (stub: raise ImportError gracefully if missing)
      → attach results to patch.checks, return list[GuardrailCheck]
 
@@ -596,15 +659,13 @@ STEP=$(curl -s -X POST localhost:8000/sessions/$SESSION/plan \
 echo "Step: $STEP"
 
 # 3. patch
-PATCH=$(curl -s -X POST localhost:8000/sessions/$SESSION/patches \
-  -H "Content-Type: application/json" \
-  -d "{\"planStepId\":\"$STEP\"}" \
+PATCH=$(curl -s -X POST localhost:8000/sessions/$SESSION/steps/$STEP/patches \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
 
 echo "Patch: $PATCH"
 
 # 4. check — MUST see R4 and R5 as BLOCK
-curl -s -X POST localhost:8000/sessions/$SESSION/patches/$PATCH/check \
+curl -s -X POST localhost:8000/sessions/$SESSION/steps/$STEP/patches/$PATCH/check \
   | python3 -m json.tool
 
 # 5. full state
@@ -642,9 +703,10 @@ Fill every blank in the skeleton. Then run the JD alignment check below.
 
 | Principle | Verification |
 |---|---|
-| SRP — POST /plan returns `patches: []` | `curl .../plan \| python3 -c "import json,sys; assert json.load(sys.stdin)[0]['patches']==[]"` |
-| SRP — POST /patches returns `checks: []` | Same pattern for checks field |
+| SRP — POST /plan response has no `patches` field | `curl .../plan \| python3 -c "import json,sys; d=json.load(sys.stdin); assert 'patches' not in d[0]"` |
+| SRP — POST /patches response has no `checks` field | Same pattern: `assert 'checks' not in d` |
 | SRP — LLM input schemas exist and are separate | `grep -n "PlanStepInput\|PatchProposalInput" src/models.py` shows two classes |
+| SRP — Response schemas (Out) exist and are separate | `grep -n "PlanStepOut\|PatchProposalOut" src/models.py` shows two classes |
 | Deterministic Boundary — no LLM call in guardrails.py | `grep -n "anthropic\|client\." src/guardrails.py` returns nothing |
 | YAGNI — no unspecified features | No SQLite, no auth, no retry loop unless spec asked |
 | Workflow-first — GET /sessions/{id} shows accumulated state | Full nested state only after all endpoints called in sequence |

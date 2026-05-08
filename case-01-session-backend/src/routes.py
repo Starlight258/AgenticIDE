@@ -30,10 +30,6 @@ class CreateSessionBody(BaseModel):
     brand: Brand
 
 
-class CreatePatchBody(BaseModel):
-    planStepId: str
-
-
 @router.post("/sessions", response_model=Session)
 def create_session(body: CreateSessionBody) -> Session:
     """Create and store a new session."""
@@ -58,11 +54,11 @@ def create_plan(session_id: UUID) -> list[PlanStepOut]:
     return [PlanStepOut(id=s.id, description=s.description, target_files=s.target_files) for s in steps]
 
 
-@router.post("/sessions/{session_id}/patches", response_model=PatchProposalOut)
-def create_patch(session_id: UUID, body: CreatePatchBody) -> PatchProposalOut:
+@router.post("/sessions/{session_id}/steps/{step_id}/patches", response_model=PatchProposalOut)
+def create_patch(session_id: UUID, step_id: UUID) -> PatchProposalOut:
     """Generate a patch proposal for a plan step."""
     session = _get_session(session_id)
-    step = _get_step(session, body.planStepId)
+    step = _get_step(session, str(step_id))
     prompt = (
         f"Generate a unified diff patch for: {step.description}\n"
         f"Target files: {step.target_files}"
@@ -76,10 +72,10 @@ def create_patch(session_id: UUID, body: CreatePatchBody) -> PatchProposalOut:
 
 
 @router.post(
-    "/sessions/{session_id}/patches/{patch_id}/check",
+    "/sessions/{session_id}/steps/{step_id}/patches/{patch_id}/check",
     response_model=list[GuardrailCheck],
 )
-def check_patch(session_id: UUID, patch_id: UUID) -> list[GuardrailCheck]:
+def check_patch(session_id: UUID, step_id: UUID, patch_id: UUID) -> list[GuardrailCheck]:
     """Run guardrail checks against a patch and attach results."""
     session = _get_session(session_id)
     patch = _find_patch(session, patch_id)
