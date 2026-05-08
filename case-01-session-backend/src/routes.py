@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from src import llm
-from src.models import Brand, GuardrailCheck, PatchProposal, PlanStep, Session
+from src.models import Brand, GuardrailCheck, PatchProposal, PatchProposalInput, PlanStep, PlanStepInput, Session
 from src.store import sessions
 
 logger = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ def create_plan(session_id: UUID) -> list[PlanStep]:
         f"Create a plan for: {session.description}\n"
         "Respond with a JSON array of PlanStep objects."
     )
-    raw_steps = llm.generate_list(prompt, session.brand, PlanStep)
+    raw_steps = llm.generate_list(prompt, session.brand, PlanStepInput)
     steps = [PlanStep(**step) for step in raw_steps]
     session.steps = steps
     logger.info("Generated %d plan steps for session %s", len(steps), session_id)
@@ -57,7 +57,7 @@ def create_patch(session_id: UUID, body: CreatePatchBody) -> PatchProposal:
         f"Generate a unified diff patch for: {step.description}\n"
         f"Target files: {step.target_files}"
     )
-    raw = llm.generate(prompt, session.brand, PatchProposal)
+    raw = llm.generate(prompt, session.brand, PatchProposalInput)
     raw["planStepId"] = str(step.id)
     patch = PatchProposal(**raw)
     step.patches.append(patch)

@@ -8,6 +8,17 @@ Severity = Literal["BLOCK", "WARN", "INFO"]
 CheckResult = Literal["pass", "fail"]
 
 
+class PlanStepInput(BaseModel):
+    """LLM-facing schema for plan step generation — no nested children."""
+    description: str
+    target_files: list[str]
+
+
+class PatchProposalInput(BaseModel):
+    """LLM-facing schema for patch generation — diff only."""
+    diff: str
+
+
 class GuardrailCheck(BaseModel):
     ruleId: str
     severity: Severity

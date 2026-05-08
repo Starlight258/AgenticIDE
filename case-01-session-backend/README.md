@@ -47,6 +47,11 @@ Developer Request
 The LLM only performs extraction and proposal generation.
 Merging, validation, and guardrail evaluation are deterministic.
 
+Each endpoint is a single transition — plan, patch, and check are kept separate so that
+each AI-assisted step is independently reviewable and deterministic guardrail evaluation
+stays decoupled from LLM generation. POST /plan returns `patches: []`; patches are only
+created when POST /patches is explicitly called.
+
 **Assumptions**:
 1. In-memory storage is sufficient for a session-scoped prototype; persistence is P2.
 2. `efood/AGENTS.md` is the authoritative rule source, loaded just-in-time per request.

@@ -1,9 +1,13 @@
 """FastAPI entry point for case-01-session-backend."""
 import logging
 
-from fastapi import FastAPI
+from dotenv import load_dotenv
 
-from src.routes import router
+load_dotenv()
+
+from fastapi import FastAPI  # noqa: E402
+
+from src.routes import router  # noqa: E402
 
 logging.basicConfig(level=logging.INFO)
 
