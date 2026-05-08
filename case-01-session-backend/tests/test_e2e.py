@@ -40,10 +40,7 @@ def _full_workflow() -> tuple[str, str, str]:
     assert len(steps) >= 1
     step_id = steps[0]["id"]
 
-    r = client.post(
-        f"/sessions/{session_id}/patches",
-        json={"planStepId": step_id},
-    )
+    r = client.post(f"/sessions/{session_id}/steps/{step_id}/patches")
     assert r.status_code == 200
     patch_id = r.json()["id"]
 
@@ -83,8 +80,8 @@ def test_plan_attaches_steps_to_session():
 
 
 def test_r4_print_is_block_in_e2e():
-    session_id, _, patch_id = _full_workflow()
-    r = client.post(f"/sessions/{session_id}/patches/{patch_id}/check")
+    session_id, step_id, patch_id = _full_workflow()
+    r = client.post(f"/sessions/{session_id}/steps/{step_id}/patches/{patch_id}/check")
     assert r.status_code == 200
     checks = {c["ruleId"]: c for c in r.json()}
     assert checks["R4"]["result"] == "fail"
@@ -92,8 +89,8 @@ def test_r4_print_is_block_in_e2e():
 
 
 def test_r5_requests_is_block_in_e2e():
-    session_id, _, patch_id = _full_workflow()
-    r = client.post(f"/sessions/{session_id}/patches/{patch_id}/check")
+    session_id, step_id, patch_id = _full_workflow()
+    r = client.post(f"/sessions/{session_id}/steps/{step_id}/patches/{patch_id}/check")
     assert r.status_code == 200
     checks = {c["ruleId"]: c for c in r.json()}
     assert checks["R5"]["result"] == "fail"
@@ -102,8 +99,8 @@ def test_r5_requests_is_block_in_e2e():
 
 def test_full_state_nested():
     """GET /sessions/{id} returns steps → patches → checks fully nested."""
-    session_id, _, patch_id = _full_workflow()
-    client.post(f"/sessions/{session_id}/patches/{patch_id}/check")
+    session_id, step_id, patch_id = _full_workflow()
+    client.post(f"/sessions/{session_id}/steps/{step_id}/patches/{patch_id}/check")
 
     r = client.get(f"/sessions/{session_id}")
     assert r.status_code == 200

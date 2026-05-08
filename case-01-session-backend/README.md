@@ -30,8 +30,7 @@ Developer Request
 [POST /sessions/{id}/plan]
   load efood/AGENTS.md just-in-time                       ← deterministic
   → LLM(claude-sonnet-4-6): decompose → [PlanStep]       ← non-deterministic, schema-constrained
-  → validate: target_files non-empty                      ← deterministic
-  → returns: [{id, description, target_files}]            ← no patches (Response Shape = Workflow Signal)
+  → returns: [{id, description, target_files}]            ← no patches field (Response Shape = Workflow Signal)
 
 [POST /sessions/{id}/steps/{step_id}/patches]
   → LLM: generate unified diff for one PlanStep           ← non-deterministic
@@ -52,8 +51,8 @@ Merging, validation, and guardrail evaluation are deterministic.
 
 Each endpoint is a single transition — plan, patch, and check are kept separate so that
 each AI-assisted step is independently reviewable and deterministic guardrail evaluation
-stays decoupled from LLM generation. POST /plan returns `patches: []`; patches are only
-created when POST /patches is explicitly called.
+stays decoupled from LLM generation. `POST /plan` returns only `[{id, description, target_files}]`;
+the `patches` field does not exist in the response because that responsibility belongs to a separate endpoint.
 
 **Assumptions**:
 1. In-memory storage is sufficient for a session-scoped prototype; persistence is P2.
@@ -127,6 +126,7 @@ No AI output was committed without a test covering the specific behavior.
 | Direct Anthropic SDK (no LangChain) | Framework would obscure the prompt/response contract, making guardrails harder to test | Team standardizes on a shared LLM gateway |
 | `trace_id` on Session | uuid4 at creation time — zero cost; enables OTEL export without schema change | OAM integration is scoped |
 | Parallel worktrees (routes + guardrails) | Routes and guardrails are independent; parallel branches demonstrate modern workflow and reduce wall-clock time | Branches diverge and merge conflicts become frequent |
+| `PATCH /sessions/{id}/steps/{step_id}/patches` URL hierarchy | Reflects true resource ownership: a patch belongs to a step, not directly to a session — `planStepId` in request body is an anti-pattern | API is consumed by a gateway that prefers flat URLs |
 
 ---
 
