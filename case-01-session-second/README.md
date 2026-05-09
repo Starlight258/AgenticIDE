@@ -16,28 +16,42 @@
 [Request]
     |
     v
+[Rate limiter — slowapi]                                                  <- deterministic
+
+[Bearer auth — HTTPBearer]
+  reject if Authorization header is missing or empty -> 403              <- deterministic
+
 [POST /sessions]
-  create Session with server-side id, trace_id, created_at, steps=[]      <- deterministic
+  create Session with server-side id, trace_id, owner_id, created_at, steps=[]  <- deterministic
+  persist to SQLite                                                       <- deterministic
 
 [POST /sessions/{session_id}/plan]
-  load Session by UUID                                                    <- deterministic
+  load Session from SQLite, verify owner_id == actor -> 403 if mismatch  <- deterministic
+  Idempotency-Key header hit? return cached response                      <- deterministic
   -> Claude tool_use output: list of plan steps                           <- non-deterministic, schema-constrained
-  -> Pydantic validates PlanStepInput, store saves PlanStep objects       <- deterministic
+  -> Pydantic validates PlanStepInput, SQLite saves PlanStep objects      <- deterministic
+  -> log audit record (trace_id, actor, action)                           <- deterministic
+  -> store idempotency key if header present                              <- deterministic
 
 [POST /sessions/{session_id}/patches]
-  load Session and step_id                                                <- deterministic
-  -> Claude tool_use output: unified diff                                 <- non-deterministic, schema-constrained
-  -> Pydantic validates PatchProposalInput, store saves PatchProposal     <- deterministic
+  load Session from SQLite, verify owner_id == actor -> 403 if mismatch  <- deterministic
+  Idempotency-Key header hit? return cached response                      <- deterministic
+  -> Claude tool_use output: unified diff (tenacity retry, max 3 attempts) <- non-deterministic, schema-constrained
+  -> Pydantic validates PatchProposalInput, SQLite saves PatchProposal    <- deterministic
+  -> log audit record                                                      <- deterministic
 
 [POST /sessions/{session_id}/patches/{patch_id}/check]  (spec endpoint)
-  verify patch belongs to session                                         <- deterministic
+  load Session from SQLite, verify owner_id == actor -> 403 if mismatch  <- deterministic
+  verify patch belongs to session -> 404 if not                           <- deterministic
   load PatchProposal, inspect added diff lines with R1-R5 regex           <- deterministic
-  -> store overwrites checks on each call                                 <- deterministic
+  -> SQLite overwrites checks on each call                                <- deterministic
 
 [POST /patches/{patch_id}/check]  (alias — patch UUID is globally unique)
-  same as above, without session ownership check
+  verify actor owns the session that contains the patch -> 403 if not    <- deterministic
+  same guardrail evaluation as spec endpoint
 
 [GET /sessions/{session_id}]
+  load Session from SQLite, verify owner_id == actor -> 403 if mismatch  <- deterministic
   -> full state: Session -> steps -> patches -> checks
 ```
 
@@ -56,13 +70,16 @@ The LLM proposes work; deterministic Python decides whether the proposed patch p
 | `GET` | `/sessions/{session_id}` | `Session` | full nested state |
 
 **Assumptions**:
-1. Storage is process-local memory in `src/store.py`; restart clears sessions and patches.
+1. Storage is SQLite (`sessions.db`) via SQLAlchemy async (`src/sqlite_repository.py`). Sessions persist across process restarts. The file `src/store.py` is an unused in-memory reference implementation.
 2. efood policy lives in `efood/AGENTS.md` and is implemented as regex checks in `src/guardrails.py`.
 3. `BLOCK` means a merge gate must fail, `WARN` means reviewer attention is required, and `INFO` is available in the schema but not currently emitted by R1-R5.
 4. LLM output is accepted only through Anthropic `tool_use` and Pydantic validation; domain models are not passed to the LLM.
 5. `brand` accepts `efood`, `glovo`, or `talabat` at the schema layer, but only the efood rules are implemented.
 6. `trace_id` is generated and returned on `Session`; there is no OTEL or distributed tracing.
 7. If `ANTHROPIC_API_KEY` is absent, `src/llm.py` returns a deterministic mock plan and a mock patch that matches the assignment's sample diff (`from .utils import calc`, `print(...)`, `requests.get(...)`) — this lets local runs and tests demonstrate R4 and R5 blocking without a live API key.
+8. All routes except `/health` require a Bearer token (`Authorization: Bearer <token>`). Any non-empty token is accepted as the actor identity; session and patch operations are scoped to that actor.
+9. `Idempotency-Key` header is supported on `POST /sessions/{id}/plan` and `POST /sessions/{id}/patches`; repeated requests with the same key return the cached response without re-calling the LLM.
+10. LLM calls use tenacity retry (up to 3 attempts, exponential back-off) on `APIStatusError`. If the API is unreachable after retries, `LLMUnavailableError` is raised and mapped to `503`.
 
 **Ambiguities I noticed**:
 1. The schema accepts `glovo` and `talabat`, but the spec says not to build multi-brand routing; this implementation stores the brand and applies the same efood guardrails.
@@ -130,14 +147,17 @@ Risk: callers cannot explicitly re-run checks, and idempotent overwrite behavior
 
 | Decision | Rationale | Reconsider if |
 |----------|-----------|---------------|
-| In-memory `dict` storage | Keeps the assignment focused on API shape, LLM contract, and guardrails. | Sessions must survive process restart or run across multiple workers. |
+| SQLite storage via SQLAlchemy async | Durable across restarts without introducing a separate DB process; simple async driver (`aiosqlite`). | Multiple workers need shared state or sessions grow beyond SQLite's write concurrency. |
 | Deterministic regex guardrails | R1-R5 are explicit string patterns, so deterministic checks are more reliable than LLM review. | Rules require Python AST analysis, dataflow, or repo-wide context. |
 | LLM only for plan and patch generation | Keeps creative generation separate from merge policy. | The product needs natural-language explanation after deterministic checks complete. |
-| Spec endpoint + alias for check | Spec endpoint validates session ownership; short alias retained for convenience. Patch UUIDs are globally unique. | Patch IDs become scoped or ownership validation needs stricter access control. |
+| Spec endpoint + alias for check | Spec endpoint validates session ownership; alias validates patch ownership via the actor's token. Patch UUIDs are globally unique. | Patch IDs become scoped or ownership validation needs stricter access control. |
 | Store all five check results | Callers can see pass and fail outcomes for every R1-R5 rule. | Payload size becomes an issue after adding many more rules. |
 | Idempotent check overwrite | Re-running `/check` replaces prior checks for the same patch. | Historical guardrail runs need audit retention. |
-| No authentication or authorization | Explicitly out of scope for this service. | The API is exposed outside local or trusted test environments. |
-| No DB, Redis, or persistence | Explicitly out of scope and unnecessary for the in-memory demo. | Production needs durability, concurrency, or audit trails. |
+| Bearer token auth — any non-empty token accepted | Satisfies session-ownership scoping without requiring a full identity provider. The actor is the raw token string. | The API is exposed outside trusted environments or needs real identity verification. |
+| Idempotency-Key header | Prevents duplicate LLM calls if the client retries after a timeout. | Fine-grained per-user or per-resource idempotency windows are needed. |
+| tenacity retry on LLM calls | Transient `APIStatusError` failures (rate limit, 5xx) are retried automatically before surfacing as `503`. | Retry budget must be caller-controlled or capped by request deadline. |
+| Rate limiting via slowapi | Prevents unbounded LLM call storms at the API layer. | Per-actor or per-tier limits are needed instead of flat IP-based limits. |
+| structlog structured logging + audit table | Provides trace_id/actor context on every log line; audit table records create_plan and create_patch actions. | Logs must flow to an external sink (OTEL, Datadog). |
 | No multi-brand routing | `brand` is stored, but only efood rules are implemented. | Glovo or talabat require different rule files or severity policies. |
 | No async queue or streaming LLM | Requests are synchronous and simple to test. | Patch generation becomes slow or needs progress updates. |
 | No OTEL or distributed tracing | Only a `trace_id` field exists today. | The service participates in production request tracing. |
@@ -176,16 +196,28 @@ Every implementation file was verified with `uv run ruff check`, `uv run ruff fo
 | Part | Verification |
 |------|--------------|
 | `pyproject.toml` | Dependency/import validation through `uv run pytest`; style through `uv run ruff check`. |
-| `src/main.py` | `GET /health` test and route import through FastAPI `TestClient`. |
-| `src/models.py` | Response-shape tests and Pydantic validation in `tests/test_e2e.py`. |
-| `src/store.py` | `patch_belongs_to_session` for ownership validation; nested workflow and idempotent check tests. |
-| `src/routes.py` | Spec endpoint + alias; ownership validation; endpoint coverage in `tests/test_e2e.py`; README URLs grepped from decorators. |
-| `src/service.py` | Full session workflow, session ownership check, 404 behavior, and check overwrite tests. |
-| `src/llm.py` | Mock returns sample diff (R4/R5 violations); patch prompt includes AGENTS.md brand context; tool-use contract checked by code review. |
+| `src/main.py` | `GET /health` test and route import through FastAPI `TestClient`; lifespan creates SQLite tables; rate limiter and exception handlers registered. |
+| `src/config.py` | `Settings` reads `ANTHROPIC_API_KEY`, `db_url`, `model` from environment; validated via pydantic-settings. |
+| `src/auth.py` | HTTPBearer dependency; any non-empty token accepted as actor. Tested via auth-required routes in `tests/test_e2e.py`. |
+| `src/guards.py` | `get_owned_session` and `verify_patch_ownership` enforce actor ownership; `OwnershipError` raised on mismatch. |
+| `src/models.py` | Domain models including `owner_id` on `Session`; response-shape tests in `tests/test_e2e.py`. |
+| `src/schemas.py` | Input and output schemas (SessionCreate, PlanStepOut, PatchProposalOut, etc.); field exclusions verified by response-shape tests. |
+| `src/repository.py` | `SessionRepository` Protocol; `log_audit` and `set_idempotency` / `get_idempotency` included in contract. |
+| `src/sqlite_repository.py` | SQLAlchemy async implementation of all repository methods including audit and idempotency. |
+| `src/db.py` | `create_tables` and `get_session` async generator; used by lifespan and `deps.py`. |
+| `src/db_models.py` | SQLAlchemy ORM table definitions. |
+| `src/deps.py` | `RepoDepend`, `LLMDepend`, `IdemDepend` annotated aliases; idempotency cache read from SQLite. |
+| `src/errors.py` | `NotFoundError`, `OwnershipError` domain exceptions. |
+| `src/exceptions.py` | FastAPI exception handlers mapping domain errors to HTTP status codes. |
+| `src/routes.py` | Spec endpoint + alias; ownership via guards; idempotency cache; audit log calls; endpoint coverage in `tests/test_e2e.py`; README URLs grepped from decorators. |
+| `src/service.py` | Full session workflow, ownership check, 404 behavior, and check overwrite tests. |
+| `src/llm.py` | Mock returns sample diff (R4/R5 violations); patch prompt includes AGENTS.md brand context; tenacity retry on `APIStatusError`; `LLMUnavailableError` on exhausted retries. |
 | `src/guardrails.py` | R1-R5 unit tests in `tests/test_guardrails.py`. |
-| `tests/conftest.py` | Store isolation confirmed by full pytest run. |
+| `src/logging_config.py` | structlog configuration; context vars bound per request (actor, session_id, trace_id). |
+| `src/store.py` | In-memory reference implementation; not wired into the request path (replaced by `SQLiteRepository`). |
+| `tests/conftest.py` | In-memory repository injected via DI override; LLM patched with `unittest.mock.patch`. |
 | `tests/test_guardrails.py` | Exercises empty patch, added-line filtering, and each R1-R5 rule. |
-| `tests/test_e2e.py` | Exercises health, spec endpoint, R4/R5 BLOCK demo, session ownership rejection, response shapes, validation, 404s, and idempotent checks. |
+| `tests/test_e2e.py` | Exercises health, auth rejection, spec endpoint, R4/R5 BLOCK demo, session ownership rejection, response shapes, validation, 404s, idempotent checks, and alias endpoint. |
 | `efood/AGENTS.md` | Rule text cross-checked against `src/guardrails.py` and tests. |
 | `README.md` | Cross-checked against route decorators, models, tests, and spec exclusions. |
 
@@ -193,8 +225,8 @@ Every implementation file was verified with `uv run ruff check`, `uv run ruff fo
 
 ## 7. If More Time
 
-- **Authentication and authorization** -> add caller identity, session ownership, and permission checks before exposing this API beyond trusted local use.
-- **Persistence with DB or Redis** -> replace process-local dictionaries with durable storage and indexes for sessions, steps, patches, and check history.
+- **Authentication and authorization** -> Bearer token auth and session/patch ownership are implemented. The next step is a real identity provider (e.g. JWT validation) to replace the accept-any-token approach.
+- **Persistence with DB or Redis** -> SQLite is already in place. The next step is migrating to PostgreSQL (or adding Redis for caching) when multiple workers or horizontal scaling are needed.
 - **Multi-brand routing** -> keep the existing `brand` field, add per-brand rule configuration, and route `glovo` and `talabat` to their own policies.
 - **Async queue and streaming LLM** -> move slow plan/patch generation into background jobs and stream status or partial output.
 - **OTEL and distributed tracing** -> export `trace_id` into spans and logs so guardrail outcomes can be followed across services.
@@ -210,6 +242,8 @@ uv sync
 uv run pytest
 uv run uvicorn src.main:app --reload
 # -> http://localhost:8000/docs
+
+# SQLite database is created automatically at ./sessions.db on first startup.
 ```
 
 Healthcheck:
@@ -222,37 +256,48 @@ curl localhost:8000/health
 Full workflow:
 
 ```bash
+# All endpoints except /health require a Bearer token. Any non-empty string works.
+TOKEN="my-dev-token"
+AUTH="-H \"Authorization: Bearer $TOKEN\""
+
 # 1. Create a session.
 SESSION_ID=$(curl -s -X POST localhost:8000/sessions \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"title":"AI coding session","description":"Implement deterministic efood guardrails","brand":"efood"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
 
 # 2. Create plan steps for the session.
 STEP_ID=$(curl -s -X POST localhost:8000/sessions/$SESSION_ID/plan \
+  -H "Authorization: Bearer $TOKEN" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['id'])")
 
 # 3. Create a patch for one step.
 PATCH_ID=$(curl -s -X POST localhost:8000/sessions/$SESSION_ID/patches \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "{\"step_id\":\"$STEP_ID\"}" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
 
 # 4. Run deterministic guardrails (spec endpoint — validates patch belongs to session).
-curl -s -X POST localhost:8000/sessions/$SESSION_ID/patches/$PATCH_ID/check | python3 -m json.tool
+curl -s -X POST localhost:8000/sessions/$SESSION_ID/patches/$PATCH_ID/check \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
 # Expected: R4 fail/BLOCK (print), R5 fail/BLOCK (requests.get), R1 fail/WARN (relative import)
 
 # 5. Read full nested session state.
-curl -s localhost:8000/sessions/$SESSION_ID | python3 -m json.tool
+curl -s localhost:8000/sessions/$SESSION_ID \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
 ```
 
 ## Tested Working
 
-- `GET /health` -> `{"status":"ok"}`.
-- `POST /sessions` -> `Session` with `steps=[]`, server-generated `id`, `trace_id`, and `created_at`.
-- `POST /sessions/{session_id}/plan` -> `list[PlanStepOut]` with no `patches` field.
-- `POST /sessions/{session_id}/patches` -> `PatchProposalOut` with no `checks` field.
+- `GET /health` -> `{"status":"ok"}` (no auth required).
+- Missing or empty `Authorization` header on any other endpoint -> `403`.
+- `POST /sessions` -> `Session` with `steps=[]`, server-generated `id`, `trace_id`, `owner_id`, and `created_at`; persisted to SQLite.
+- `POST /sessions/{session_id}/plan` -> `list[PlanStepOut]` with no `patches` field; repeated call with same `Idempotency-Key` returns cached result.
+- `POST /sessions/{session_id}/patches` -> `PatchProposalOut` with no `checks` field; repeated call with same `Idempotency-Key` returns cached result.
 - `POST /sessions/{session_id}/patches/{patch_id}/check` -> five `GuardrailCheck` objects; R4=fail/BLOCK and R5=fail/BLOCK on mock sample diff.
-- `POST /patches/{patch_id}/check` -> same guardrail result; alias without session ownership check.
+- `POST /patches/{patch_id}/check` -> same guardrail result; alias validates actor owns the patch's parent session.
 - Spec endpoint with patch from a different session -> `404`.
+- Accessing another actor's session -> `403`.
 - `GET /sessions/{session_id}` -> nested `Session` with `steps -> patches -> checks`.
