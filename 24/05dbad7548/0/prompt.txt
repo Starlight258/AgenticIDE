@@ -1,0 +1,21 @@
+구현할 때 tier1이랑 tier2  - ownership 검증: session.owner_id == actor
+  - structured logging에 trace_id, actor, session_id
+  - LLM timeout + retry + 503
+  - idempotency는 LLM endpoint에만, SQLite로 간단히 이거 다음 프로젝트에서도 기억할 수 있게 하고 싶은데 구현시에.. 어떻게 하면 좋을까? Tier 1 — 없으면 production 불가 (must-have)
+#영역현재 상태4h 안에 박는 것시간1Persistencedict[UUID, X] globalSQLite + SQLModel(async) — Repository protocol 인터페이스로 store 추상화. Depends(get_repo)60분2Async LLMclient.messages.create 동기 호출AsyncAnthropic + async def 라우트. LLM 호출 30s 동안 worker 안 막음20분3Dependency Injectionmodule global importDepends(get_store), Depends(get_llm), Depends(get_settings). test는 app.dependency_overrides15분4Settingsos.getenv() 산재pydantic-settings.BaseSettings 1개 클래스. ANTHROPIC_API_KEY, MODEL, USE_VERTEX, DB_URL 한 곳에10분5Centralized exception handlerroutes 마다 try/except@app.exception_handler(NotFoundError) 1개 등록. routes 절반으로 줄음5분
+왜 1순위: 위 5개 없으면 staging도 못 띄움. 1번이 60분으로 가장 무겁지만 나머지는 cascade로 풀림.
+
+🟠 Tier 2 — production 운영에서 매번 깨짐 (operational)
+#영역박는 것왜6AuthenticationHTTPBearer 의존성 + session.owner_id + 라우트별 ownership 검증현재 누구나 누구 session 검사 가능7Structured logging + trace_id 전파structlog + Depends(get_logger). trace_id가 모든 로그에 박힘디버깅 불가능한 production은 production 아님8OpenTelemetryopentelemetry-instrumentation-fastapi. 라우트/LLM 호출/DB query spanDH JD 직격 키워드 (OTEL/GDP)9Rate limitingslowapi middleware + per-API-key bucket토큰 비용 폭탄 방지10Idempotency keysIdempotency-Key 헤더 → 24h Redis 캐시. 동일 키 재요청 시 캐시 반환LLM 호출은 비싸고 비결정적. retry-safe 필수11Circuit breaker for LLMtenacity + 5xx 비율 임계 → 30초 fail-fast 503Anthropic 장애 시 cascading failure 방지12Audit log별도 테이블 audit_events(actor, action, resource, payload, timestamp, trace_id). 모든 LLM 호출의 prompt+response 저장
+
+---
+
+구현할 때 tier1이랑 tier2  - ownership 검증: session.owner_id == actor
+  - structured logging에 trace_id, actor, session_id
+  - LLM timeout + retry + 503
+  - idempotency는 LLM endpoint에만, SQLite로 간단히 이거 다음 프로젝트에서도 기억할 수 있게 하고 싶은데 구현시에.. 어떻게 하면 좋을까? Tier 1 — 없으면 production 불가 (must-have)
+#영역현재 상태4h 안에 박는 것시간1Persistencedict[UUID, X] globalSQLite + SQLModel(async) — Repository protocol 인터페이스로 store 추상화. Depends(get_repo)60분2Async LLMclient.messages.create 동기 호출AsyncAnthropic + async def 라우트. LLM 호출 30s 동안 worker 안 막음20분3Dependency Injectionmodule global importDepends(get_store), Depends(get_llm), Depends(get_settings). test는 app.dependency_overrides15분4Settingsos.getenv() 산재pydantic-settings.BaseSettings 1개 클래스. ANTHROPIC_API_KEY, MODEL, USE_VERTEX, DB_URL 한 곳에10분5Centralized exception handlerroutes 마다 try/except@app.exception_handler(NotFoundError) 1개 등록. routes 절반으로 줄음5분
+왜 1순위: 위 5개 없으면 staging도 못 띄움. 1번이 60분으로 가장 무겁지만 나머지는 cascade로 풀림.
+
+🟠 Tier 2 — production 운영에서 매번 깨짐 (operational)
+#영역박는 것왜6AuthenticationHTTPBearer 의존성 + session.owner_id + 라우트별 ownership 검증현재 누구나 누구 session 검사 가능7Structured logging + trace_id 전파structlog + Depends(get_logger). trace_id가 모든 로그에 박힘디버깅 불가능한 production은 production 아님8OpenTelemetryopentelemetry-instrumentation-fastapi. 라우트/LLM 호출/DB query spanDH JD 직격 키워드 (OTEL/GDP)9Rate limitingslowapi middleware + per-API-key bucket토큰 비용 폭탄 방지10Idempotency keysIdempotency-Key 헤더 → 24h Redis 캐시. 동일 키 재요청 시 캐시 반환LLM 호출은 비싸고 비결정적. retry-safe 필수11Circuit breaker for LLMtenacity + 5xx 비율 임계 → 30초 fail-fast 503Anthropic 장애 시 cascading failure 방지12Audit log별도 테이블 audit_events(actor, action, resource, payload, timestamp, trace_id). 모든 LLM 호출의 prompt+response 저장
