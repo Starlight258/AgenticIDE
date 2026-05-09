@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "3c68d7b86cee",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md",
+    "_shared/LESSONS_LEARNED.md",
+    "_shared/README_5sections.md",
+    "case-01-session-backend/.claude/commands/assignment.md",
+    "case-01-session-second/.gitignore",
+    "case-01-session-second/README.md",
+    "case-01-session-second/src/guardrails.py",
+    "case-01-session-second/src/llm.py",
+    "case-01-session-second/src/routes.py",
+    "case-01-session-second/src/service.py",
+    "case-01-session-second/src/store.py",
+    "case-01-session-second/tests/conftest.py",
+    "case-01-session-second/tests/test_e2e.py",
+    "case-01-session-second/tests/test_guardrails.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/3c/68d7b86cee/0/metadata.json",
+      "transcript": "/3c/68d7b86cee/0/full.jsonl",
+      "content_hash": "/3c/68d7b86cee/0/content_hash.txt",
+      "prompt": "/3c/68d7b86cee/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 84,
+    "cache_creation_tokens": 176441,
+    "cache_read_tokens": 4247619,
+    "output_tokens": 34134,
+    "api_call_count": 69
+  }
+}

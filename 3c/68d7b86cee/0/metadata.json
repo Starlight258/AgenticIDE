@@ -1,0 +1,233 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "3c68d7b86cee",
+  "session_id": "25173fea-dc8b-4774-85f6-cae5bced36d7",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-09T02:08:29.24116Z",
+  "branch": "main",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md",
+    "_shared/LESSONS_LEARNED.md",
+    "_shared/README_5sections.md",
+    "case-01-session-backend/.claude/commands/assignment.md",
+    "case-01-session-second/.gitignore",
+    "case-01-session-second/README.md",
+    "case-01-session-second/src/guardrails.py",
+    "case-01-session-second/src/llm.py",
+    "case-01-session-second/src/routes.py",
+    "case-01-session-second/src/service.py",
+    "case-01-session-second/src/store.py",
+    "case-01-session-second/tests/conftest.py",
+    "case-01-session-second/tests/test_e2e.py",
+    "case-01-session-second/tests/test_guardrails.py"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "aa6a2a804d41",
+  "token_usage": {
+    "input_tokens": 84,
+    "cache_creation_tokens": 176441,
+    "cache_read_tokens": 4247619,
+    "output_tokens": 34134,
+    "api_call_count": 69
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-09T02:08:29.190341Z",
+    "agent_lines": 92,
+    "agent_removed": 55,
+    "human_added": 0,
+    "human_modified": 48,
+    "human_removed": 24,
+    "total_committed": 140,
+    "total_lines_changed": 232,
+    "agent_percentage": 63.36206896551724,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1700,
+      "user_lines_removed": 68,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/commands/assignment.md": 27,
+        ".claude/commands/evaluate.md": 50,
+        ".claude/settings.local.json": 48,
+        "_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md": 177,
+        "_shared/LESSONS_LEARNED.md": 22,
+        "case-01-session-backend/.claude/commands/assignment.md": 26,
+        "case-01-session-backend/.claude/commands/evaluate.md": 50,
+        "case-01-session-backend/.claude/settings.local.json": 7,
+        "case-01-session-second/assignment.md": 81,
+        "case-01-session-second/src/guardrails.py": 27,
+        "case-01-session-second/src/llm.py": 9,
+        "case-01-session-second/src/service.py": 1,
+        "case-01-session-second/tests/conftest.py": 24,
+        "case-01-session-second/tests/test_e2e.py": 1,
+        "case-01-session-second/tests/test_guardrails.py": 9,
+        "evaluator/.env": 1,
+        "evaluator/.env.example": 1,
+        "evaluator/.python-version": 1,
+        "evaluator/pyproject.toml": 29,
+        "evaluator/src/evaluator.egg-info/PKG-INFO": 11,
+        "evaluator/src/evaluator.egg-info/SOURCES.txt": 15,
+        "evaluator/src/evaluator.egg-info/dependency_links.txt": 1,
+        "evaluator/src/evaluator.egg-info/entry_points.txt": 2,
+        "evaluator/src/evaluator.egg-info/requires.txt": 5,
+        "evaluator/src/evaluator.egg-info/top_level.txt": 6,
+        "evaluator/src/evaluator.py": 197,
+        "evaluator/src/fetcher.py": 92,
+        "evaluator/src/main.py": 79,
+        "evaluator/src/models.py": 76,
+        "evaluator/src/report.py": 82,
+        "evaluator/tests/test_fetcher.py": 63,
+        "evaluator/tests/test_models.py": 93,
+        "evaluator/uv.lock": 387
+      },
+      "user_removed_per_file": {
+        ".claude/commands/assignment.md": 13,
+        "_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md": 24,
+        "case-01-session-backend/.claude/commands/assignment.md": 12,
+        "case-01-session-second/src/guardrails.py": 7,
+        "case-01-session-second/src/service.py": 1,
+        "case-01-session-second/tests/conftest.py": 1,
+        "case-01-session-second/tests/test_e2e.py": 1,
+        "case-01-session-second/tests/test_guardrails.py": 9
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 55,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1780,
+      "agent_lines_removed": 79,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 48,
+        "case-01-session-backend/.claude/settings.local.json": 7
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 55,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1831,
+      "agent_lines_removed": 106,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 48,
+        "case-01-session-backend/.claude/settings.local.json": 7
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 56,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1758,
+      "agent_lines_removed": 106,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 49,
+        "case-01-session-backend/.claude/settings.local.json": 7
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 68,
+      "user_lines_removed": 1,
+      "agent_lines_added": 1758,
+      "agent_lines_removed": 106,
+      "user_added_per_file": {
+        ".claude/commands/assignment.md": 12,
+        ".claude/settings.local.json": 49,
+        "case-01-session-backend/.claude/settings.local.json": 7
+      },
+      "user_removed_per_file": {
+        ".claude/commands/assignment.md": 1
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 1401,
+      "user_lines_removed": 2,
+      "agent_lines_added": 1752,
+      "agent_lines_removed": 106,
+      "user_added_per_file": {
+        ".claude/commands/assignment.md": 12,
+        ".claude/settings.local.json": 49,
+        "case-00-class/.claude/agents/builder.md": 38,
+        "case-00-class/.claude/agents/reviewer.md": 65,
+        "case-00-class/.claude/agents/tester.md": 44,
+        "case-00-class/.env.example": 7,
+        "case-00-class/.gitignore": 8,
+        "case-00-class/AGENTS.md": 41,
+        "case-00-class/Makefile": 32,
+        "case-00-class/README.md": 201,
+        "case-00-class/pyproject.toml": 8,
+        "case-00-class/src/main.py": 10,
+        "case-00-class/uv.lock": 879,
+        "case-01-session-backend/.claude/settings.local.json": 7
+      },
+      "user_removed_per_file": {
+        ".claude/commands/assignment.md": 1,
+        "case-00-class/pyproject.toml": 1
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 1401,
+      "user_lines_removed": 2,
+      "agent_lines_added": 1758,
+      "agent_lines_removed": 112,
+      "user_added_per_file": {
+        ".claude/commands/assignment.md": 12,
+        ".claude/settings.local.json": 49,
+        "case-00-class/.claude/agents/builder.md": 38,
+        "case-00-class/.claude/agents/reviewer.md": 65,
+        "case-00-class/.claude/agents/tester.md": 44,
+        "case-00-class/.env.example": 7,
+        "case-00-class/.gitignore": 8,
+        "case-00-class/AGENTS.md": 41,
+        "case-00-class/Makefile": 32,
+        "case-00-class/README.md": 201,
+        "case-00-class/pyproject.toml": 8,
+        "case-00-class/src/main.py": 10,
+        "case-00-class/uv.lock": 879,
+        "case-01-session-backend/.claude/settings.local.json": 7
+      },
+      "user_removed_per_file": {
+        ".claude/commands/assignment.md": 1,
+        "case-00-class/pyproject.toml": 1
+      }
+    },
+    {
+      "checkpoint_number": 8,
+      "user_lines_added": 1401,
+      "user_lines_removed": 2,
+      "agent_lines_added": 1768,
+      "agent_lines_removed": 123,
+      "user_added_per_file": {
+        ".claude/commands/assignment.md": 12,
+        ".claude/settings.local.json": 49,
+        "case-00-class/.claude/agents/builder.md": 38,
+        "case-00-class/.claude/agents/reviewer.md": 65,
+        "case-00-class/.claude/agents/tester.md": 44,
+        "case-00-class/.env.example": 7,
+        "case-00-class/.gitignore": 8,
+        "case-00-class/AGENTS.md": 41,
+        "case-00-class/Makefile": 32,
+        "case-00-class/README.md": 201,
+        "case-00-class/pyproject.toml": 8,
+        "case-00-class/src/main.py": 10,
+        "case-00-class/uv.lock": 879,
+        "case-01-session-backend/.claude/settings.local.json": 7
+      },
+      "user_removed_per_file": {
+        ".claude/commands/assignment.md": 1,
+        "case-00-class/pyproject.toml": 1
+      }
+    }
+  ]
+}
