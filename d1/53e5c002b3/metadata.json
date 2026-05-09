@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "d153e5c002b3",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "case-01-session-second/src/deps.py",
+    "case-01-session-second/src/llm.py",
+    "case-01-session-second/src/routes.py",
+    "case-01-session-second/src/service.py",
+    "case-01-session-second/tests/conftest.py",
+    "case-01-session-second/tests/test_audit_debug.py",
+    "case-01-session-second/tests/test_e2e.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d1/53e5c002b3/0/metadata.json",
+      "transcript": "/d1/53e5c002b3/0/full.jsonl",
+      "content_hash": "/d1/53e5c002b3/0/content_hash.txt",
+      "prompt": "/d1/53e5c002b3/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 182,
+    "cache_creation_tokens": 346133,
+    "cache_read_tokens": 12796914,
+    "output_tokens": 97532,
+    "api_call_count": 134
+  }
+}
