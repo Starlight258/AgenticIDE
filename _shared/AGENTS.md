@@ -20,6 +20,15 @@
 - Every public function gets ≥ 1 pytest case.
 - Tests use real types (no `Any`), no network calls (mock the LLM client).
 
+## Assignment Protocol
+
+When implementing an assignment or take-home case, read
+`_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md` before coding.
+
+Apply its Production Hardening Tiers:
+- Tier 1 is required before staging.
+- Tier 2 should stay narrow unless explicitly requested.
+
 ## Multi-brand Awareness
 
 - All entities carry a `brand` field: `"efood" | "glovo" | "talabat"`.

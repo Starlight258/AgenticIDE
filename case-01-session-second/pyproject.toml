@@ -8,9 +8,19 @@ dependencies = [
     "anthropic>=0.100.0",
     "fastapi[standard]>=0.136.1",
     "pydantic>=2.13.4",
+    "pydantic-settings>=2.0.0",
     "pytest>=9.0.3",
+    "pytest-asyncio>=0.23.0",
     "python-dotenv>=1.2.2",
     "ruff>=0.15.12",
+    "sqlmodel>=0.0.21",
+    "aiosqlite>=0.20.0",
+    "sqlalchemy[asyncio]>=2.0.0",
+    "structlog>=24.0.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-instrumentation-fastapi>=0.40b0",
+    "slowapi>=0.1.9",
+    "tenacity>=8.2.0",
 ]
 
 [tool.pytest.ini_options]

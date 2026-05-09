@@ -1,10 +1,19 @@
-import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
-from anthropic import Anthropic
+import anthropic
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
+from src.config import Settings
+from src.logging_config import get_logger
 from src.models import Brand, PatchProposalInput, PlanStepInput
+
+logger = get_logger(__name__)
 
 PLAN_TOOL = {
     "name": "output",
@@ -39,30 +48,110 @@ PATCH_TOOL = {
 }
 
 
-def create_plan(title: str, description: str, brand: Brand) -> list[PlanStepInput]:
-    if not os.getenv("ANTHROPIC_API_KEY"):
+class LLMUnavailableError(Exception):
+    """Raised when the LLM service is unavailable after retries."""
+
+
+class LLMProvider(Protocol):
+    async def create_plan(
+        self,
+        title: str,
+        description: str,
+        brand: Brand,
+        settings: Settings,
+    ) -> list[PlanStepInput]: ...
+
+    async def create_patch(
+        self,
+        step: PlanStepInput,
+        brand: Brand,
+        settings: Settings,
+    ) -> PatchProposalInput: ...
+
+
+class AnthropicLLM:
+    async def create_plan(
+        self,
+        title: str,
+        description: str,
+        brand: Brand,
+        settings: Settings,
+    ) -> list[PlanStepInput]:
+        return await create_plan(title, description, brand, settings)
+
+    async def create_patch(
+        self,
+        step: PlanStepInput,
+        brand: Brand,
+        settings: Settings,
+    ) -> PatchProposalInput:
+        return await create_patch(step, brand, settings)
+
+
+async def create_plan(
+    title: str,
+    description: str,
+    brand: Brand,
+    settings: Settings,
+) -> list[PlanStepInput]:
+    if not settings.anthropic_api_key:
+        logger.info("llm.mock_plan", title=title, brand=brand)
         return _mock_plan()
-    result = _call_tool(PLAN_TOOL, _plan_prompt(title, description, brand))
+
+    prompt = _plan_prompt(title, description, brand)
+    try:
+        result, _ = await _call_tool_with_retry(PLAN_TOOL, prompt, settings)
+    except Exception as exc:
+        raise LLMUnavailableError("LLM unavailable") from exc
+
+    logger.info("llm.plan_created", brand=brand, steps=len(result.get("steps", [])))
     return [PlanStepInput.model_validate(step) for step in result["steps"]]
 
 
-def create_patch(step: PlanStepInput, brand: Brand) -> PatchProposalInput:
-    if not os.getenv("ANTHROPIC_API_KEY"):
+async def create_patch(
+    step: PlanStepInput,
+    brand: Brand,
+    settings: Settings,
+) -> PatchProposalInput:
+    if not settings.anthropic_api_key:
+        logger.info("llm.mock_patch", brand=brand)
         return _mock_patch(step)
-    result = _call_tool(PATCH_TOOL, _patch_prompt(step, brand))
+
+    prompt = _patch_prompt(step, brand)
+    try:
+        result, _ = await _call_tool_with_retry(PATCH_TOOL, prompt, settings)
+    except Exception as exc:
+        raise LLMUnavailableError("LLM unavailable") from exc
+
+    logger.info("llm.patch_created", brand=brand)
     return PatchProposalInput.model_validate(result)
 
 
-def _call_tool(tool: dict[str, Any], prompt: str) -> dict[str, Any]:
-    client = Anthropic()
-    response = client.messages.create(
-        model=os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5"),
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(min=1, max=10),
+    retry=retry_if_exception_type(anthropic.APIStatusError),
+    reraise=True,
+)
+async def _call_tool_with_retry(
+    tool: dict[str, Any],
+    prompt: str,
+    settings: Settings,
+) -> tuple[dict[str, Any], dict[str, int]]:
+    """Call the Anthropic tool API with retry on APIStatusError."""
+    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+    response = await client.messages.create(
+        model=settings.model,
         max_tokens=4096,
         tools=[tool],
         tool_choice={"type": "tool", "name": "output"},
         messages=[{"role": "user", "content": prompt}],
     )
-    return response.content[0].input
+    usage = {
+        "input_tokens": response.usage.input_tokens,
+        "output_tokens": response.usage.output_tokens,
+    }
+    return response.content[0].input, usage
 
 
 def _read_agents(brand: Brand) -> str:

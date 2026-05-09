@@ -955,6 +955,81 @@ In production, these would be exported as OTEL spans to DH OAM."
 
 ---
 
+## Production Hardening Tiers
+
+Use this when a submission needs to move beyond the in-memory assignment baseline without turning
+the exercise into infrastructure work.
+
+### Tier 1 — Required Before Staging
+
+These are must-have implementation requirements. If any are missing, do not call the service
+production-ready.
+
+1. **Persistence**
+   - Replace module-level `dict[UUID, X]` state with SQLite + SQLModel async persistence.
+   - Hide storage behind a repository protocol.
+   - Routes receive storage via `Depends(get_repo)`.
+
+2. **Async LLM**
+   - LLM calls are async end to end.
+   - Use `AsyncAnthropic` or an equivalent async provider client.
+   - FastAPI routes and service functions must not block the worker during a long LLM call.
+
+3. **Dependency Injection**
+   - Routes receive `repo`, `settings`, and `llm_client` through FastAPI dependencies.
+   - Tests override dependencies with `app.dependency_overrides`.
+   - Avoid service-layer module globals for replaceable infrastructure.
+
+4. **Settings**
+   - Centralize environment configuration in one `pydantic-settings.BaseSettings` class.
+   - Include `ANTHROPIC_API_KEY`, `MODEL`, `USE_VERTEX`, and `DB_URL`.
+   - Do not scatter `os.getenv()` reads through route/service/LLM code.
+
+5. **Centralized Exception Handling**
+   - Routes should not repeat `try/except HTTPException` wrappers.
+   - Register app-level handlers such as `@app.exception_handler(NotFoundError)`.
+
+### Tier 2 — Keep Narrow Unless Explicitly Asked
+
+These are operational improvements, but most are over-scope for the take-home. Implement only the
+low-cost pieces that protect the core workflow.
+
+**Implement when hardening the assignment:**
+
+1. **Authentication + ownership**
+   - Use `HTTPBearer` to identify the actor.
+   - Store `session.owner_id`.
+   - Verify ownership on every session and patch workflow route, including shortcut check endpoints.
+
+2. **Structured logging + trace context**
+   - Use structured logs.
+   - Bind `trace_id`, `session_id`, and `actor` consistently before service actions.
+
+**Usually document as future work unless the user asks:**
+
+- Full OTEL exporter and custom LLM/DB spans.
+- Redis-backed idempotency cache.
+- Rate limiting middleware and per-key buckets.
+- Real circuit breaker with rolling 5xx thresholds and fail-fast windows.
+- Full audit retention policy for prompts/responses.
+
+### Case-01-Session-Second Baseline
+
+For `case-01-session-second`, Tier 1 plus the narrow Tier 2 subset above means:
+
+- SQLite + SQLModel async repository with `Depends(get_repo)`.
+- Async LLM wrapper with injectable `LLMProvider` via `Depends(get_llm)`.
+- Central `Settings` for `ANTHROPIC_API_KEY`, `MODEL`, `USE_VERTEX`, `DB_URL`.
+- App-level exception handlers.
+- Bearer-token actor stored as `Session.owner_id`.
+- Cross-actor access returns 403 for session, plan, patch, and check routes.
+- Logs bind `trace_id`, `session_id`, and `actor`.
+
+Do not add the broader Tier 2 items unless the user explicitly prioritizes production operations
+over assignment scope.
+
+---
+
 ## File Output Map
 
 ```

@@ -28,12 +28,14 @@ Whichever loads successfully is the authoritative assignment for this run.
 3. Keep P0/P1/P2 scope explicit. Do not add P2 features unless the user asks.
 4. Use the Builder, Reviewer, and Tester agent definitions under `.claude/agents/` when delegating.
 5. Never invent requirements. If the assignment is ambiguous, document the assumption in README.
-6. Before declaring completion, run the **Phase 5 JD Alignment bash script** from the protocol —
+6. Apply the **Production Hardening Tiers** from the protocol:
+   Tier 1 is required before staging; Tier 2 should stay narrow unless explicitly requested.
+7. Before declaring completion, run the **Phase 5 JD Alignment bash script** from the protocol —
    every `grep` and `python3` assertion must exit 0.
-7. Before declaring completion, run the **Phase 6 Assignment Requirements Gate** from the protocol —
+8. Before declaring completion, run the **Phase 6 Assignment Requirements Gate** from the protocol —
    read the loaded assignment, extract every endpoint/MUST/evaluation requirement, verify each one,
    and paste the full checkbox report. Every box must be `[x]` before submit.
-8. Run the **format + lint gate** — both must be clean before commit:
+9. Run the **format + lint gate** — both must be clean before commit:
    ```bash
    SRC=$([ -d src ] && echo src || echo app)
    uv run ruff format --check $SRC tests   # formatting gate — run `uv run ruff format $SRC tests` first if it fails
@@ -44,8 +46,8 @@ Whichever loads successfully is the authoritative assignment for this run.
    ```bash
    git status --short   # any ?? that should be staged or gitignored?
    ```
-9. End with: files changed, pytest result, format + lint gate output, Phase 5 gate output, Phase 6 gate report.
-9. **Phase 7 — Evaluator's Eye View**: after Phase 6 passes, run `/evaluate` on the submission:
+10. End with: files changed, pytest result, format + lint gate output, Phase 5 gate output, Phase 6 gate report.
+11. **Phase 7 — Evaluator's Eye View**: after Phase 6 passes, run `/evaluate` on the submission:
    ```bash
    REPO_ROOT=$(git rev-parse --show-toplevel)
    cd "$REPO_ROOT/evaluator" && uv run evaluate --path "$REPO_ROOT/case-01-session-backend"

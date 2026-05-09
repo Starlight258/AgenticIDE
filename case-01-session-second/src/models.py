@@ -90,5 +90,6 @@ class Session(BaseModel):
     description: str
     brand: Brand
     trace_id: UUID
+    owner_id: str = ""
     steps: list[PlanStep] = Field(default_factory=list)
     created_at: datetime

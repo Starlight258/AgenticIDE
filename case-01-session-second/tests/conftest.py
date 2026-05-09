@@ -1,9 +1,11 @@
-from unittest.mock import patch
-
 import pytest
 
-from src import store
+from src.config import Settings
+from src.deps import get_llm, get_repo, get_settings
+from src.main import app
+from src.models import Brand
 from src.models import PatchProposalInput, PlanStepInput
+from src.repository import InMemoryRepository
 
 _MOCK_PLAN = [
     PlanStepInput(
@@ -25,16 +27,48 @@ _MOCK_PATCH = PatchProposalInput(
     )
 )
 
+# Single shared repo instance — reset between tests
+_repo = InMemoryRepository()
+
+
+class FakeLLM:
+    async def create_plan(
+        self,
+        title: str,
+        description: str,
+        brand: Brand,
+        settings: Settings,
+    ) -> list[PlanStepInput]:
+        return _MOCK_PLAN
+
+    async def create_patch(
+        self,
+        step: PlanStepInput,
+        brand: Brand,
+        settings: Settings,
+    ) -> PatchProposalInput:
+        return _MOCK_PATCH
+
 
 @pytest.fixture(autouse=True)
-def mock_llm():
-    with patch("src.llm.create_plan", return_value=_MOCK_PLAN):
-        with patch("src.llm.create_patch", return_value=_MOCK_PATCH):
-            yield
-
-
-@pytest.fixture(autouse=True)
-def clear_store():
-    store.clear()
+def reset_repo():
+    _repo.clear()
     yield
-    store.clear()
+    _repo.clear()
+
+
+@pytest.fixture(autouse=True)
+def override_dependencies():
+    """Override DI to use InMemoryRepository and test Settings."""
+    test_settings = Settings(anthropic_api_key="", env="test")
+
+    app.dependency_overrides[get_repo] = lambda: _repo
+    app.dependency_overrides[get_settings] = lambda: test_settings
+    app.dependency_overrides[get_llm] = lambda: FakeLLM()
+    yield
+    app.dependency_overrides.clear()
+
+
+def get_test_repo() -> InMemoryRepository:
+    """Return the shared test repository for inspection in tests."""
+    return _repo
