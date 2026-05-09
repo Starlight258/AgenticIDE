@@ -44,7 +44,7 @@ def create_patch(session_id: UUID, payload: PatchCreate) -> PatchProposalOut:
     step = store.find_step(session_id, payload.step_id)
     if step is None:
         raise NotFoundError("step not found")
-    patch_input = llm.create_patch(_to_plan_step_input(step))
+    patch_input = llm.create_patch(_to_plan_step_input(step), session.brand)
     patch = _to_patch(session, payload.step_id, patch_input.diff)
     stored = store.save_patch(session_id, patch)
     if stored is None:
@@ -52,11 +52,18 @@ def create_patch(session_id: UUID, payload: PatchCreate) -> PatchProposalOut:
     return PatchProposalOut.model_validate(stored)
 
 
+def check_patch_in_session(session_id: UUID, patch_id: UUID) -> list[GuardrailCheck]:
+    _require_session(session_id)
+    if not store.patch_belongs_to_session(session_id, patch_id):
+        raise NotFoundError("patch not found in session")
+    return check_patch(patch_id)
+
+
 def check_patch(patch_id: UUID) -> list[GuardrailCheck]:
     patch = store.get_patch(patch_id)
     if patch is None:
         raise NotFoundError("patch not found")
-    checks = guardrails.run_checks(patch.diff)
+    checks = guardrails.run_checks(patch.diff, patch.brand)
     stored = store.save_checks(patch_id, checks)
     if stored is None:
         raise NotFoundError("patch not found")

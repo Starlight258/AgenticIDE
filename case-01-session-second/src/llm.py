@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from typing import Any
 
 from anthropic import Anthropic
@@ -45,10 +46,10 @@ def create_plan(title: str, description: str, brand: Brand) -> list[PlanStepInpu
     return [PlanStepInput.model_validate(step) for step in result["steps"]]
 
 
-def create_patch(step: PlanStepInput) -> PatchProposalInput:
+def create_patch(step: PlanStepInput, brand: Brand) -> PatchProposalInput:
     if not os.getenv("ANTHROPIC_API_KEY"):
         return _mock_patch(step)
-    result = _call_tool(PATCH_TOOL, _patch_prompt(step))
+    result = _call_tool(PATCH_TOOL, _patch_prompt(step, brand))
     return PatchProposalInput.model_validate(result)
 
 
@@ -64,20 +65,35 @@ def _call_tool(tool: dict[str, Any], prompt: str) -> dict[str, Any]:
     return response.content[0].input
 
 
+def _read_agents(brand: Brand) -> str:
+    path = Path(f"{brand}/AGENTS.md")
+    return path.read_text() if path.exists() else ""
+
+
 def _plan_prompt(title: str, description: str, brand: Brand) -> str:
+    agents = _read_agents(brand)
+    agents_section = f"Brand guidelines:\n{agents}\n" if agents else ""
     return (
         f"Create an implementation plan for a {brand} AI coding session.\n"
         f"Title: {title}\n"
         f"Description: {description}\n"
+        f"{agents_section}"
         "Return only the output tool payload."
     )
 
 
-def _patch_prompt(step: PlanStepInput) -> str:
+def _patch_prompt(step: PlanStepInput, brand: Brand) -> str:
+    agents = _read_agents(brand)
+    agents_section = (
+        f"\nBrand guardrail rules — your patch MUST comply:\n{agents}\n"
+        if agents
+        else ""
+    )
     return (
         "Create a unified diff for this implementation step.\n"
         f"Description: {step.description}\n"
         f"Target files: {', '.join(step.target_files)}\n"
+        f"{agents_section}"
         "Return only the output tool payload."
     )
 
@@ -92,6 +108,15 @@ def _mock_plan() -> list[PlanStepInput]:
 
 
 def _mock_patch(step: PlanStepInput) -> PatchProposalInput:
-    target = step.target_files[0] if step.target_files else "src/example.py"
-    diff = f"--- a/{target}\n+++ b/{target}\n@@\n+def generated_change():\n+    pass"
+    target = step.target_files[0] if step.target_files else "pricing/discount.py"
+    diff = (
+        f"--- a/{target}\n"
+        f"+++ b/{target}\n"
+        "@@ -0,0 +1,5 @@\n"
+        "+from .utils import calc\n"
+        "+def apply_discount(order, pct):\n"
+        '+    """Apply discount to order."""\n'
+        '+    print(f"Discount applied: {pct}")\n'
+        "+    requests.get(provider_url)\n"
+    )
     return PatchProposalInput(diff=diff)

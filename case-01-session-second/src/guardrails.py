@@ -1,20 +1,42 @@
 import re
 from collections.abc import Callable
+from pathlib import Path
 
-from src.models import GuardrailCheck
+from src.models import Brand, GuardrailCheck
 
 RuleMatcher = Callable[[list[str]], bool]
 
+_FALLBACK_SEVERITY: dict[str, str] = {
+    "R1": "WARN",
+    "R2": "BLOCK",
+    "R3": "WARN",
+    "R4": "BLOCK",
+    "R5": "BLOCK",
+}
 
-def run_checks(diff: str) -> list[GuardrailCheck]:
+
+def run_checks(diff: str, brand: Brand) -> list[GuardrailCheck]:
     added = _added_lines(diff)
+    sev = _parse_severities(brand)
     return [
-        _check("R1", "WARN", _has_relative_import, added),
-        _check("R2", "BLOCK", _has_shell_execution, added),
-        _check("R3", "WARN", _has_public_function_without_docstring, added),
-        _check("R4", "BLOCK", _has_print_call, added),
-        _check("R5", "BLOCK", _has_requests_call, added),
+        _check("R1", sev.get("R1", "WARN"), _has_relative_import, added),
+        _check("R2", sev.get("R2", "BLOCK"), _has_shell_execution, added),
+        _check(
+            "R3", sev.get("R3", "WARN"), _has_public_function_without_docstring, added
+        ),
+        _check("R4", sev.get("R4", "BLOCK"), _has_print_call, added),
+        _check("R5", sev.get("R5", "BLOCK"), _has_requests_call, added),
     ]
+
+
+def _parse_severities(brand: Brand) -> dict[str, str]:
+    try:
+        text = Path(f"{brand}/AGENTS.md").read_text()
+    except FileNotFoundError:
+        return _FALLBACK_SEVERITY.copy()
+    pattern = re.compile(r"-\s+(R\d+)\s+(WARN|BLOCK|INFO):")
+    parsed = {m.group(1): m.group(2) for m in pattern.finditer(text)}
+    return {**_FALLBACK_SEVERITY, **parsed}
 
 
 def _added_lines(diff: str) -> list[str]:

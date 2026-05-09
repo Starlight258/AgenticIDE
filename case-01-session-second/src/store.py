@@ -48,6 +48,13 @@ def get_patch(patch_id: UUID) -> PatchProposal | None:
     return _patches.get(patch_id)
 
 
+def patch_belongs_to_session(session_id: UUID, patch_id: UUID) -> bool:
+    patch = get_patch(patch_id)
+    if patch is None:
+        return False
+    return find_step(session_id, patch.step_id) is not None
+
+
 def save_checks(
     patch_id: UUID,
     checks: list[GuardrailCheck],

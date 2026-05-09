@@ -136,12 +136,12 @@ No AI output was committed without a test covering the specific behavior.
 The final decisions were reviewed and adjusted by me before implementation.
 I made the final design choices by comparing correctness, complexity, and assignment scope.
 
-| Part | Done by | Verification |
-|------|---------|--------------|
-| Domain models | Hand | Type-checked by Pydantic |
-| [File/component] | AI — [tool], worktree `[branch]` | [how it was verified] |
-| [File/component] | AI — [tool], worktree `[branch]` | [how it was verified] |
-| README | Hand | — |
+| Part | Verification |
+|------|--------------|
+| Domain models | Type-checked by Pydantic |
+| [File/component] | [how it was verified] |
+| [File/component] | [how it was verified] |
+| README | Cross-checked against route decorators, models, and tests |
 
 ---
 

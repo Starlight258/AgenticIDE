@@ -37,6 +37,17 @@ def create_patch(session_id: UUID, payload: PatchCreate) -> PatchProposalOut:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
+@router.post(
+    "/sessions/{session_id}/patches/{patch_id}/check",
+    response_model=list[GuardrailCheck],
+)
+def check_patch_in_session(session_id: UUID, patch_id: UUID) -> list[GuardrailCheck]:
+    try:
+        return service.check_patch_in_session(session_id, patch_id)
+    except service.NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.post("/patches/{patch_id}/check", response_model=list[GuardrailCheck])
 def check_patch(patch_id: UUID) -> list[GuardrailCheck]:
     try:

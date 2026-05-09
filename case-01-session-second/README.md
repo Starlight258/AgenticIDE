@@ -29,10 +29,13 @@
   -> Claude tool_use output: unified diff                                 <- non-deterministic, schema-constrained
   -> Pydantic validates PatchProposalInput, store saves PatchProposal     <- deterministic
 
-[POST /patches/{patch_id}/check]
-  load PatchProposal by globally unique patch_id                          <- deterministic
-  -> regex guardrails inspect added diff lines only                       <- deterministic
+[POST /sessions/{session_id}/patches/{patch_id}/check]  (spec endpoint)
+  verify patch belongs to session                                         <- deterministic
+  load PatchProposal, inspect added diff lines with R1-R5 regex           <- deterministic
   -> store overwrites checks on each call                                 <- deterministic
+
+[POST /patches/{patch_id}/check]  (alias — patch UUID is globally unique)
+  same as above, without session ownership check
 
 [GET /sessions/{session_id}]
   -> full state: Session -> steps -> patches -> checks
@@ -42,14 +45,15 @@ The LLM proposes work; deterministic Python decides whether the proposed patch p
 
 **Actual endpoints**:
 
-| Method | Path | Response model |
-|--------|------|----------------|
-| `GET` | `/health` | `dict[str, str]` |
-| `POST` | `/sessions` | `Session` |
-| `POST` | `/sessions/{session_id}/plan` | `list[PlanStepOut]` |
-| `POST` | `/sessions/{session_id}/patches` | `PatchProposalOut` |
-| `POST` | `/patches/{patch_id}/check` | `list[GuardrailCheck]` |
-| `GET` | `/sessions/{session_id}` | `Session` |
+| Method | Path | Response model | Notes |
+|--------|------|----------------|-------|
+| `GET` | `/health` | `dict[str, str]` | |
+| `POST` | `/sessions` | `Session` | |
+| `POST` | `/sessions/{session_id}/plan` | `list[PlanStepOut]` | no `patches` field |
+| `POST` | `/sessions/{session_id}/patches` | `PatchProposalOut` | no `checks` field |
+| `POST` | `/sessions/{session_id}/patches/{patch_id}/check` | `list[GuardrailCheck]` | **spec endpoint** — validates ownership |
+| `POST` | `/patches/{patch_id}/check` | `list[GuardrailCheck]` | alias — patch UUID is globally unique |
+| `GET` | `/sessions/{session_id}` | `Session` | full nested state |
 
 **Assumptions**:
 1. Storage is process-local memory in `src/store.py`; restart clears sessions and patches.
@@ -58,12 +62,13 @@ The LLM proposes work; deterministic Python decides whether the proposed patch p
 4. LLM output is accepted only through Anthropic `tool_use` and Pydantic validation; domain models are not passed to the LLM.
 5. `brand` accepts `efood`, `glovo`, or `talabat` at the schema layer, but only the efood rules are implemented.
 6. `trace_id` is generated and returned on `Session`; there is no OTEL or distributed tracing.
-7. If `ANTHROPIC_API_KEY` is absent, `src/llm.py` returns deterministic mock plan and patch data for tests and local demos.
+7. If `ANTHROPIC_API_KEY` is absent, `src/llm.py` returns a deterministic mock plan and a mock patch that matches the assignment's sample diff (`from .utils import calc`, `print(...)`, `requests.get(...)`) — this lets local runs and tests demonstrate R4 and R5 blocking without a live API key.
 
 **Ambiguities I noticed**:
 1. The schema accepts `glovo` and `talabat`, but the spec says not to build multi-brand routing; this implementation stores the brand and applies the same efood guardrails.
 2. R3 defines "public function without docstring" for added lines only; this implementation checks whether the next non-empty added line after `def name(...)` starts with a triple-quoted docstring.
 3. The service returns guardrail checks, not a separate merge decision object; downstream callers must interpret any `BLOCK` failure as not mergeable.
+4. **R1 contradiction in the sample diff**: the assignment states that `from .utils import calc` "passes R1", but R1 requires absolute imports and `from .utils` is a relative import. This implementation applies R1 as written in `efood/AGENTS.md` — the sample diff's relative import therefore fails R1 with `WARN` severity. The assignment's inline note appears to be an error in the spec.
 
 ---
 
@@ -106,18 +111,18 @@ Risk: complex Python semantics are not modeled, but the specified R1-R5 patterns
 ### Patch Check Scope
 
 **Option 1 - `/sessions/{session_id}/patches/{patch_id}/check`**
-Scope checks under sessions.
-Risk: callers must carry redundant IDs even though patch IDs are UUIDs.
+Scope checks under sessions; session ownership is validated server-side.
+Risk: callers must carry both IDs, but both are available from the workflow.
 
 **Option 2 - `/patches/{patch_id}/check`**
 Check by globally unique patch ID.
-Risk: the URL does not visibly show the parent session.
+Risk: the URL does not visibly show the parent session; no ownership validation.
 
 **Option 3 - Compute checks during patch creation**
 Always run guardrails inside `POST /sessions/{session_id}/patches`.
 Risk: callers cannot explicitly re-run checks, and idempotent overwrite behavior is harder to demonstrate.
 
-**I chose Option 2** because it matches the implementation spec and keeps patch checks simple. The trade-off is less hierarchical routing, which is acceptable because the patch ID is globally unique.
+**I chose Option 1** as the primary endpoint because it matches the assignment spec verbatim, allows session ownership validation (patch from session A is rejected when requested under session B), and makes the resource hierarchy explicit. Option 2 is retained as an alias because patch UUIDs are globally unique and the short form is convenient for direct patch lookups. The trade-off is that callers must carry both IDs for the spec path, which is acceptable in a session-scoped workflow.
 
 ---
 
@@ -128,7 +133,7 @@ Risk: callers cannot explicitly re-run checks, and idempotent overwrite behavior
 | In-memory `dict` storage | Keeps the assignment focused on API shape, LLM contract, and guardrails. | Sessions must survive process restart or run across multiple workers. |
 | Deterministic regex guardrails | R1-R5 are explicit string patterns, so deterministic checks are more reliable than LLM review. | Rules require Python AST analysis, dataflow, or repo-wide context. |
 | LLM only for plan and patch generation | Keeps creative generation separate from merge policy. | The product needs natural-language explanation after deterministic checks complete. |
-| `/patches/{patch_id}/check` URL | Patch UUIDs are globally unique, so session scope is redundant for the check call. | Patch IDs become scoped or human-readable rather than globally unique. |
+| Spec endpoint + alias for check | Spec endpoint validates session ownership; short alias retained for convenience. Patch UUIDs are globally unique. | Patch IDs become scoped or ownership validation needs stricter access control. |
 | Store all five check results | Callers can see pass and fail outcomes for every R1-R5 rule. | Payload size becomes an issue after adding many more rules. |
 | Idempotent check overwrite | Re-running `/check` replaces prior checks for the same patch. | Historical guardrail runs need audit retention. |
 | No authentication or authorization | Explicitly out of scope for this service. | The API is exposed outside local or trusted test environments. |
@@ -144,10 +149,11 @@ Risk: callers cannot explicitly re-run checks, and idempotent overwrite behavior
 
 - Missing session ID returns `404`.
 - Missing step ID inside an existing session returns `404`.
-- Missing patch ID returns `404`.
-- `/patches/{patch_id}/check` can be called repeatedly and overwrites `checks`.
+- Missing patch ID returns `404` on both spec and alias endpoints.
+- Patch from session A used on session B's spec endpoint returns `404` (session ownership validation).
+- `/check` can be called repeatedly and overwrites prior checks (idempotent).
 - Unknown `brand` values fail at Pydantic request validation with `422`.
-- Missing `ANTHROPIC_API_KEY` uses deterministic mock LLM output.
+- Missing `ANTHROPIC_API_KEY` uses deterministic mock LLM output (sample diff with R4/R5 violations).
 - Empty patch text returns five passing checks.
 - Removed lines and diff headers are ignored because guardrails inspect added lines only.
 
@@ -167,21 +173,21 @@ Example prompts used during design:
 
 Every implementation file was verified with `uv run ruff check`, `uv run ruff format --check`, and `uv run pytest`.
 
-| Part | Done by | Verification |
-|------|---------|--------------|
-| `pyproject.toml` | AI-assisted | Dependency/import validation through `uv run pytest`; style through `uv run ruff check`. |
-| `src/main.py` | AI-assisted | `GET /health` test and route import through FastAPI `TestClient`. |
-| `src/models.py` | AI-assisted | Response-shape tests and Pydantic validation in `tests/test_e2e.py`. |
-| `src/store.py` | AI-assisted | Nested session workflow and idempotent check test. |
-| `src/routes.py` | AI-assisted | Endpoint coverage in `tests/test_e2e.py`; README URLs grepped from decorators. |
-| `src/service.py` | AI-assisted | Full session workflow, 404 behavior, and check overwrite tests. |
-| `src/llm.py` | AI-assisted | Mock-mode workflow tests without `ANTHROPIC_API_KEY`; tool-use contract checked by code review. |
-| `src/guardrails.py` | AI-assisted | R1-R5 unit tests in `tests/test_guardrails.py`. |
-| `tests/conftest.py` | AI-assisted | Store isolation confirmed by full pytest run. |
-| `tests/test_guardrails.py` | AI-assisted | Exercises empty patch, added-line filtering, and each R1-R5 rule. |
-| `tests/test_e2e.py` | AI-assisted | Exercises health, response shapes, validation, 404s, and idempotent checks. |
-| `efood/AGENTS.md` | AI-assisted | Rule text cross-checked against `src/guardrails.py` and tests. |
-| `README.md` | AI-assisted | Cross-checked against route decorators, models, tests, and spec exclusions. |
+| Part | Verification |
+|------|--------------|
+| `pyproject.toml` | Dependency/import validation through `uv run pytest`; style through `uv run ruff check`. |
+| `src/main.py` | `GET /health` test and route import through FastAPI `TestClient`. |
+| `src/models.py` | Response-shape tests and Pydantic validation in `tests/test_e2e.py`. |
+| `src/store.py` | `patch_belongs_to_session` for ownership validation; nested workflow and idempotent check tests. |
+| `src/routes.py` | Spec endpoint + alias; ownership validation; endpoint coverage in `tests/test_e2e.py`; README URLs grepped from decorators. |
+| `src/service.py` | Full session workflow, session ownership check, 404 behavior, and check overwrite tests. |
+| `src/llm.py` | Mock returns sample diff (R4/R5 violations); patch prompt includes AGENTS.md brand context; tool-use contract checked by code review. |
+| `src/guardrails.py` | R1-R5 unit tests in `tests/test_guardrails.py`. |
+| `tests/conftest.py` | Store isolation confirmed by full pytest run. |
+| `tests/test_guardrails.py` | Exercises empty patch, added-line filtering, and each R1-R5 rule. |
+| `tests/test_e2e.py` | Exercises health, spec endpoint, R4/R5 BLOCK demo, session ownership rejection, response shapes, validation, 404s, and idempotent checks. |
+| `efood/AGENTS.md` | Rule text cross-checked against `src/guardrails.py` and tests. |
+| `README.md` | Cross-checked against route decorators, models, tests, and spec exclusions. |
 
 ---
 
@@ -232,8 +238,9 @@ PATCH_ID=$(curl -s -X POST localhost:8000/sessions/$SESSION_ID/patches \
   -d "{\"step_id\":\"$STEP_ID\"}" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
 
-# 4. Run deterministic guardrails.
-curl -s -X POST localhost:8000/patches/$PATCH_ID/check | python3 -m json.tool
+# 4. Run deterministic guardrails (spec endpoint — validates patch belongs to session).
+curl -s -X POST localhost:8000/sessions/$SESSION_ID/patches/$PATCH_ID/check | python3 -m json.tool
+# Expected: R4 fail/BLOCK (print), R5 fail/BLOCK (requests.get), R1 fail/WARN (relative import)
 
 # 5. Read full nested session state.
 curl -s localhost:8000/sessions/$SESSION_ID | python3 -m json.tool
@@ -245,5 +252,7 @@ curl -s localhost:8000/sessions/$SESSION_ID | python3 -m json.tool
 - `POST /sessions` -> `Session` with `steps=[]`, server-generated `id`, `trace_id`, and `created_at`.
 - `POST /sessions/{session_id}/plan` -> `list[PlanStepOut]` with no `patches` field.
 - `POST /sessions/{session_id}/patches` -> `PatchProposalOut` with no `checks` field.
-- `POST /patches/{patch_id}/check` -> five `GuardrailCheck` objects for R1-R5, including pass results.
+- `POST /sessions/{session_id}/patches/{patch_id}/check` -> five `GuardrailCheck` objects; R4=fail/BLOCK and R5=fail/BLOCK on mock sample diff.
+- `POST /patches/{patch_id}/check` -> same guardrail result; alias without session ownership check.
+- Spec endpoint with patch from a different session -> `404`.
 - `GET /sessions/{session_id}` -> nested `Session` with `steps -> patches -> checks`.

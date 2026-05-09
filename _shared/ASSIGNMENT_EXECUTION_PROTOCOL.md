@@ -580,39 +580,50 @@ Every rule must produce a GuardrailCheck with ruleId, severity, result, and reas
 
 File: src/guardrails.py
 
-  def check_patch(patch_text: str, brand: str) -> list[GuardrailCheck]:
+  def run_checks(diff: str, brand: Brand) -> list[GuardrailCheck]:
       """Evaluate a unified diff against the brand's AGENTS.md rules.
       Returns one GuardrailCheck per rule, regardless of pass/fail.
-      brand parameter is present for future multi-brand AGENTS.md routing.
       """
+
+MANDATORY — AGENTS.md must be the source of truth for severities:
+
+  def _parse_severities(brand: Brand) -> dict[str, str]:
+      """Read {brand}/AGENTS.md and parse rule severities from it.
+      Fall back to hardcoded defaults only if the file is missing.
+      """
+      try:
+          text = Path(f"{brand}/AGENTS.md").read_text()
+      except FileNotFoundError:
+          return {"R1": "WARN", "R2": "BLOCK", "R3": "WARN", "R4": "BLOCK", "R5": "BLOCK"}
+      pattern = re.compile(r"-\s+(R\d+)\s+(WARN|BLOCK|INFO):")
+      return {m.group(1): m.group(2) for m in pattern.finditer(text)}
+
+  # run_checks calls _parse_severities(brand) FIRST, then passes sev.get("R1", ...) etc.
+  # NEVER hardcode "WARN" or "BLOCK" as literals in the rule dispatch list itself.
 
 Rules (regex-based, deterministic — no LLM calls in this file):
 
   R1 — Absolute imports only
     Pattern: line in diff starting with +, containing "from ." (relative import)
-    Severity: WARN
     Reason template: "Relative import detected: '{match}' — use absolute imports per AGENTS.md R1"
 
   R2 — No os.system or subprocess without review
     Pattern: + line containing "os.system(" or "subprocess."
-    Severity: BLOCK
     Reason template: "Unsafe shell call '{match}' — requires explicit security review per AGENTS.md R2"
 
   R3 — Public functions must have docstrings
     Pattern: + line matching `def [a-z][^_]` (public, non-dunder) not followed by a + line with """
-    Severity: WARN
     Reason: "Public function missing docstring per AGENTS.md R3"
 
   R4 — No print() — use efood.logging
     Pattern: + line containing "print("
-    Severity: BLOCK
     Reason template: "print() call detected — use efood.logging per AGENTS.md R4"
 
   R5 — External HTTP via efood.http_client only
     Pattern: + line containing "requests." (get/post/put/delete/patch)
-    Severity: BLOCK
     Reason template: "Direct requests.{method} call — use efood.http_client per AGENTS.md R5"
 
+(Severities come from _parse_severities(brand), not hardcoded here.)
 Return one GuardrailCheck per rule, always. If no violation found: result="pass".
 
 File: tests/test_guardrails.py
@@ -628,9 +639,11 @@ File: tests/test_guardrails.py
   test_r1_relative_import_warn: SAMPLE_PATCH → R1 result="fail", severity="WARN"
   test_clean_patch_all_pass: clean patch (no violations) → all result="pass"
   test_r2_subprocess_block: patch with "subprocess.run(" → R2 result="fail", severity="BLOCK"
-  test_brand_parameter_accepted: check_patch("", brand="glovo") does not raise
+  test_agents_md_drives_severity: modify efood/AGENTS.md R1 from WARN→BLOCK, call
+    run_checks("+from .x import y", "efood") → R1 severity must be "BLOCK" (proves file is read)
+    Restore AGENTS.md after test.
 
-Done when: uv run pytest tests/test_guardrails.py -v shows 6 tests passing.
+Done when: uv run pytest tests/test_guardrails.py -v shows all tests passing.
 ```
 
 ---
@@ -701,20 +714,80 @@ curl -s localhost:8000/sessions/$SESSION | python3 -m json.tool
 
 Fill every blank in the skeleton. Then run the JD alignment check below.
 
-### JD Alignment Check (must all be green before submit)
+### JD Alignment Check — Automated Gate (run every command; all must exit 0)
 
-| JD Requirement | Evidence in repo | ✓ |
-|---|---|---|
-| Git worktrees | `git log --oneline --graph` shows feat/routes + feat/guardrails merged | ☐ |
-| Multi-agent workflow | README §3 AI Leverage table shows Agent A / Agent B with separate worktrees | ☐ |
-| AGENTS.md / Engineering Manifesto | README §Architecture: "loaded just-in-time"; code: `src/llm.py` reads file at call time | ☐ |
-| Guardrails — safe to deploy | `GuardrailCheck.severity=BLOCK` gates merge; R4 + R5 demonstrated in E2E | ☐ |
-| Multi-brand field | `Session.brand: Brand` in schema; `check_patch(patch, brand=session.brand)` in route | ☐ |
-| OTEL / OAM / tracing | `Session.trace_id` present; README §5 names OAM export as P2 | ☐ |
-| Deterministic boundary | README diagram shows LLM between two deterministic blocks; guardrails are regex-only | ☐ |
-| Context integration framing | README intro: "DH-aware integration layer" not "build an IDE" | ☐ |
-| Developer productivity / friction | README §1 opens with "what this replaces" — the manual workflow | ☐ |
-| Measurement / KPI | README §Domain Model mentions Human/AI code ratio as downstream metric | ☐ |
+Each check is an executable assertion. A non-zero exit or empty output = FAIL; fix before submit.
+
+```bash
+# ── 1. AGENTS.md loaded just-in-time in llm.py ─────────────────────────────
+grep -En "AGENTS\.md|read_agents|read_text" src/llm.py | grep -v "^\s*#"
+# Must return ≥1 line. Empty → FAIL: llm.py does not read AGENTS.md.
+
+# ── 2. AGENTS.md read in guardrails.py ──────────────────────────────────────
+grep -En "AGENTS\.md|read_text|_parse_severities|_parse_rules" src/guardrails.py | grep -v "^\s*#"
+# Must return ≥1 line. Empty → FAIL: guardrails reads no brand file.
+
+# ── 3. brand is PASSED to guardrails from service layer ─────────────────────
+grep -En "run_checks\(|check_patch\(" src/service.py | grep "brand"
+# Must return ≥1 line. Empty → FAIL: brand not forwarded to guardrails.
+
+# ── 4. No hardcoded severity literals in rule dispatch list ─────────────────
+python3 - <<'EOF'
+import ast, sys
+src = open("src/guardrails.py").read()
+tree = ast.parse(src)
+# Find all string literals that are "WARN" or "BLOCK"
+literals = [n for n in ast.walk(tree) if isinstance(n, ast.Constant) and n.value in {"WARN","BLOCK","INFO"}]
+# They should appear only in fallback/default dicts, not in the dispatch list
+# Heuristic: if >5 such literals exist outside of a dict, something is hardcoded
+print(f"Severity literals found: {len(literals)} — review manually if >10")
+EOF
+
+# ── 5. LLM uses tool_use (no free-text JSON parsing) ───────────────────────
+grep -En "tool_choice" src/llm.py | grep -v "^\s*#"
+# Must return ≥1 line. Empty → FAIL: not using tool_use.
+
+grep -En "json\.loads" src/llm.py | grep -v "^\s*#" | grep -v "test"
+# Must return 0 lines. Any hit → FAIL: json.loads on raw LLM response.
+
+# ── 6. max_tokens ≥ 4096 ────────────────────────────────────────────────────
+python3 -c "
+import re, sys
+text = open('src/llm.py').read()
+hits = re.findall(r'max_tokens\s*=\s*(\d+)', text)
+bad = [h for h in hits if int(h) < 4096]
+if bad: sys.exit(f'FAIL: max_tokens too low: {bad}')
+print(f'max_tokens OK: {hits}')
+"
+
+# ── 7. response.content[0].input (not json.loads) ───────────────────────────
+grep -En "response\.content\[0\]\.input|content\[0\]\.input" src/llm.py | grep -v "^\s*#"
+# Must return ≥1 line. Empty → FAIL: not using structured output correctly.
+
+# ── 8. trace_id on Session ───────────────────────────────────────────────────
+grep -En "trace_id" src/models.py | grep -v "^\s*#"
+# Must return ≥1 line. Empty → FAIL: no trace_id.
+
+# ── 9. No print() in src/ ────────────────────────────────────────────────────
+result=$(grep -rEn "^\s*print\s*\(" src/ | grep -v "test_")
+if [ -n "$result" ]; then echo "FAIL: print() found:"; echo "$result"; exit 1; fi
+echo "No print() — OK"
+
+# ── 10. Git worktrees in log ─────────────────────────────────────────────────
+git log --oneline --graph | head -20
+# Visually verify feat/routes and feat/guardrails branch names appear.
+
+# ── 11. POST /plan response has no patches field ─────────────────────────────
+python3 -c "
+import subprocess, json, sys
+# Requires server running: uv run uvicorn src.main:app &
+# If not running, skip and note manually.
+print('Run manually if server is up:')
+print('curl -s -X POST localhost:8000/sessions -H \"Content-Type: application/json\" -d \\'{}\\' | python3 -m json.tool')
+"
+```
+
+**Passing criteria**: every command above exits 0. Items 10 and 11 are visual — note result explicitly.
 
 ### Design Principles Check (run before JD alignment)
 
@@ -733,7 +806,81 @@ Fill every blank in the skeleton. Then run the JD alignment check below.
 
 ---
 
-## Commit Strategy
+## Phase 6 — Assignment Requirements Gate (MANDATORY — final step before submit)
+
+**Do not declare completion until every checkbox is ✅. Fix and re-run rather than skip.**
+
+This phase reads the actual ASSIGNMENT.md and verifies every explicit requirement one by one.
+It is distinct from the Phase 5 JD Signal check — that checks framing and architecture signals.
+This checks whether the literal spec is fully delivered.
+
+---
+
+### Step 1 — Extract requirements from ASSIGNMENT.md
+
+Read the loaded assignment text and list every:
+- Numbered endpoint requirement (POST …, GET …)
+- Every sentence containing **"MUST"** or **"must"** (these are hard requirements)
+- Every item under "What we evaluate" / "We expect"
+
+Write them out as a numbered list before running any checks.
+
+---
+
+### Step 2 — Verify each requirement
+
+For each extracted requirement, run the appropriate check:
+
+| Requirement type | How to verify |
+|---|---|
+| Endpoint `POST /foo` exists | `grep -En "post.*foo\|router\.post" src/routes.py` |
+| Response has field X | Read response model in `src/models.py` or run TestClient test |
+| Response must NOT have field X | Look for `Out` model that omits the field; check test asserts `"X" not in response` |
+| **"MUST consult brand's AGENTS.md"** | `grep -En "AGENTS\.md\|read_text\|_parse_severities" src/guardrails.py` — must return ≥1 line |
+| "R4/R5 must flag" | Run sample diff through guardrail in test or live; check `result="fail"` |
+| README section exists | `grep -n "heading" README.md` |
+| how-to-run ≤ 1 minute | Count commands in README run section — must be ≤5 steps |
+| pytest green | `uv run pytest -v` — 0 failures |
+
+---
+
+### Step 3 — Paste this report before declaring done
+
+Fill in every box. Every `[ ]` must become `[x]` before submit.
+
+```
+=== Phase 6: Assignment Requirements Gate ===
+Assignment: <file path or title>
+
+ENDPOINTS
+[ ] POST /sessions            — creates session with title, description, brand; returns id + trace_id
+[ ] POST /sessions/{id}/plan  — LLM proposes; returns list[PlanStep(description, target_files)]
+[ ] POST /sessions/{id}/patches
+                              — LLM proposes; returns PatchProposal(diff)
+[ ] POST /sessions/{id}/patches/{patchId}/check
+                              — returns list[GuardrailCheck(ruleId, severity, result, reason)]
+[ ] GET  /sessions/{id}       — returns full nested state (steps → patches → checks)
+
+MUST CLAUSES (copied verbatim from assignment)
+[ ] "Guardrails MUST consult the brand's AGENTS.md"
+    Evidence: grep src/guardrails.py → <paste output here>
+
+WE EXPECT / EVALUATION CRITERIA
+[ ] R4 (print) → result="fail"        Evidence: <test name or curl output>
+[ ] R5 (requests) → result="fail"     Evidence: <test name or curl output>
+[ ] README: decisions, trade-offs, what you didn't do
+[ ] README: how-to-run in ≤ 1 minute
+[ ] pytest: <N> passed, 0 failed
+
+RESULT: [ALL PASS — ready to submit]
+     OR [FAIL: <list items that are still [ ]> — fix then re-run gate]
+```
+
+**Rule**: any `[ ]` left open = not done. Fix the implementation, re-run the gate, then submit.
+
+---
+
+
 
 ```bash
 git add src/models.py README.md
@@ -795,10 +942,16 @@ In production, these would be exported as OTEL spans to DH OAM."
 4. **print() anywhere** — Use `logging`. This is also a test case.
 5. **README last** — Skeleton (all 5 sections + Architecture diagram) before first route.
 6. **E2E skip** — Pytest green ≠ feature correct. Always run the curl workflow.
-7. **Missing brand on guardrail** — `check_patch(diff, brand)` signature must accept brand even if unused now.
+7. **Guardrail ignores AGENTS.md** — `run_checks(diff, brand)` MUST read `{brand}/AGENTS.md`
+   and parse severity from it. "brand parameter present but unused" is the failure mode, not
+   the solution. Litmus test: change a severity in `efood/AGENTS.md` — if the guardrail output
+   doesn't change, the implementation is wrong.
 8. **No trace_id** — It is one field, costs nothing, and signals OTEL/OAM awareness from the start.
 9. **"multi-brand" only in schema** — It must also appear in README as a described extension path.
 10. **Worktrees not visible in git log** — Merge commits should show feat/routes and feat/guardrails branch names.
+11. **Severity hardcoded as literals in rule dispatch** — Writing `_check("R1", "WARN", ...)` in
+    the dispatch list means changing AGENTS.md has no effect. Severity must flow from
+    `_parse_severities(brand)["R1"]` with a fallback default, never from an inline string literal.
 
 ---
 

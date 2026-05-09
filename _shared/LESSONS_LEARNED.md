@@ -126,6 +126,28 @@ LLM이 "친절하게" patches와 checks까지 전부 채워 반환했다.
 
 ---
 
+---
+
+### Mistake 7 — guardrails가 AGENTS.md를 실제로 읽지 않음 (case-01-session-second)
+
+**무슨 일**: `guardrails.run_checks(diff)`가 브랜드를 받지 않았고, severity를 코드에 하드코딩했다.
+`llm._plan_prompt()`도 AGENTS.md 내용을 LLM에 전달하지 않았다.
+`efood/AGENTS.md`를 수정해도 guardrail 동작이 바뀌지 않는 상태였다.
+
+**왜 발생**: Protocol의 Agent B 프롬프트에 "brand parameter is present for future use, **even if unused now**"라고 적혀 있었다.
+에이전트가 이 표현을 "브랜드를 받되 쓰지 않아도 된다"로 해석했다.
+Phase 5 JD Alignment Check가 체크박스 테이블이라 자동 검증이 없었고, 90분 제약 안에서 눈으로 확인하지 못했다.
+
+**핵심 원인**: "brand parameter accepted but unused" = 구현 누락. 파라미터 시그니처만 있고 파일을 읽지 않으면 요구사항 미충족.
+
+**다음에 할 것**:
+- Protocol Agent B 프롬프트에서 "unused" 표현 제거 → `_parse_severities(brand)` 구현 명시
+- Phase 5 JD Alignment Check를 체크박스 → 실행 가능한 bash 검증 스크립트로 교체
+- 리트머스 테스트: `efood/AGENTS.md`의 R1 severity를 WARN→BLOCK으로 바꾸고 테스트 재실행 → 결과가 바뀌어야 함
+- Anti-pattern #7/#11 추가: "guardrail이 AGENTS.md를 읽지 않으면 구현 누락"
+
+---
+
 ## Agent Prompt 필수 체크리스트 (Phase 3 시작 전)
 
 Agent A (routes + LLM) prompt에 반드시 포함할 것:
