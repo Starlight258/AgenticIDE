@@ -1,0 +1,9 @@
+@second readme 맞는지 최종 검증해줘
+
+---
+
+응
+
+---
+
+커밋 및 main에 push해줘
