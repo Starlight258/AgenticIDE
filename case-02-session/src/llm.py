@@ -171,22 +171,15 @@ def _patch_prompt(step: PlanStepInput, brand: Brand) -> str:
 def _mock_plan() -> list[PlanStepInput]:
     return [
         PlanStepInput(
-            description="Implement deterministic guardrail evaluation",
-            target_files=["src/guardrails.py", "tests/test_guardrails.py"],
+            description="Add payment charge handler",
+            target_files=["payments/charge.py"],
         )
     ]
 
 
 def _mock_patch(step: PlanStepInput) -> PatchProposalInput:
-    target = step.target_files[0] if step.target_files else "pricing/discount.py"
-    diff = (
-        f"--- a/{target}\n"
-        f"+++ b/{target}\n"
-        "@@ -0,0 +1,5 @@\n"
-        "+from .utils import calc\n"
-        "+def apply_discount(order, pct):\n"
-        '+    """Apply discount to order."""\n'
-        '+    print(f"Discount applied: {pct}")\n'
-        "+    requests.get(provider_url)\n"
-    )
-    return PatchProposalInput(diff=diff)
+    sample_path = Path("glovo/sample_diff.patch")
+    if sample_path.exists():
+        return PatchProposalInput(diff=sample_path.read_text())
+    target = step.target_files[0] if step.target_files else "payments/charge.py"
+    return PatchProposalInput(diff=f"--- a/{target}\n+++ b/{target}\n")
