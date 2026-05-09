@@ -127,3 +127,7 @@ P2 - formatting gate still fails
 ---
 
 @README.md 도 그에 따라 수정해줘
+
+---
+
+main에 push해줘
