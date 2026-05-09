@@ -5,14 +5,16 @@ API contracts or LLM prompts change, not when business rules change.
 """
 
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
-from src.models import Brand
+from src.models import Brand, ReadinessVerdict
 
 
 # ── Request DTOs ──────────────────────────────────────────────────────────────
+
 
 class SessionCreate(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -29,6 +31,7 @@ class PatchCreate(BaseModel):
 
 
 # ── LLM I/O DTOs ─────────────────────────────────────────────────────────────
+
 
 class PlanStepInput(BaseModel):
     """What the LLM produces for one plan step. No id, no child lists."""
@@ -49,6 +52,7 @@ class PatchProposalInput(BaseModel):
 
 # ── Response DTOs ─────────────────────────────────────────────────────────────
 
+
 class PlanStepOut(BaseModel):
     """POST /plan response — no patches (response shape = workflow signal)."""
 
@@ -67,4 +71,33 @@ class PatchProposalOut(BaseModel):
     id: UUID
     step_id: UUID
     diff: str
+    created_at: datetime
+
+
+class StepReadinessOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    step_id: UUID
+    verdict: ReadinessVerdict
+    block_count: int
+    warn_count: int
+    latest_patch_id: UUID | None = None  # which patch the verdict is based on
+
+
+class TestRunCreate(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    patch_ids: list[UUID]
+    outcome: Literal["PASS", "FAIL", "PARTIAL"]
+    notes: str = ""
+
+
+class TestRunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: UUID
+    session_id: UUID
+    patch_ids: list[UUID]
+    outcome: Literal["PASS", "FAIL", "PARTIAL"]
+    notes: str
     created_at: datetime

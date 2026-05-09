@@ -4,19 +4,21 @@ from datetime import UTC, datetime
 from typing import Optional
 from uuid import UUID
 
-from src.models import GuardrailCheck, PatchProposal, PlanStep, Session
+from src.models import GuardrailCheck, PatchProposal, PlanStep, Session, TestRun
 
 
 class InMemoryRepository:
     def __init__(self) -> None:
         self._sessions: dict[UUID, Session] = {}
         self._patches: dict[UUID, PatchProposal] = {}
+        self._test_runs: dict[UUID, TestRun] = {}
         self._idempotency: dict[str, tuple[str, datetime]] = {}
         self._audit_log: list[dict] = []
 
     def clear(self) -> None:
         self._sessions.clear()
         self._patches.clear()
+        self._test_runs.clear()
         self._idempotency.clear()
         self._audit_log.clear()
 
@@ -76,6 +78,29 @@ class InMemoryRepository:
             return None
         patch.checks = checks
         return patch.checks
+
+    async def update_patch_if_version(
+        self,
+        patch_id: UUID,
+        expected_version: int,
+        checks: list[GuardrailCheck],
+    ) -> bool:
+        patch = self._patches.get(patch_id)
+        if patch is None or patch.version != expected_version:
+            return False
+        patch.checks = checks
+        patch.version += 1
+        return True
+
+    async def save_test_run(
+        self, session_id: UUID, test_run: TestRun
+    ) -> Optional[TestRun]:
+        session = await self.get_session(session_id)
+        if session is None:
+            return None
+        session.test_runs.append(test_run)
+        self._test_runs[test_run.id] = test_run
+        return test_run
 
     async def log_audit(
         self,

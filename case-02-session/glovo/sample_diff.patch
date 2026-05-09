@@ -1,0 +1,23 @@
+diff --git a/payments/charge.py b/payments/charge.py
+new file mode 100644
+index 0000000..0000001
+--- /dev/null
++++ b/payments/charge.py
+@@ -0,0 +1,18 @@
++from decimal import Decimal
++import logging
++
++URL = "https://api.partner.com/charge"
++
++logger = logging.getLogger(__name__)
++
++
++async def charge(order):
++    amount: Decimal = Decimal(str(order.amount))
++    tip = float(order.tip)
++    async with engine.connect() as conn:
++        result = await conn.execute(
++            "INSERT INTO charges VALUES (?, ?)", (amount, tip)
++        )
++    logger.info("Charged order", extra={"order_id": order.id})
++    return result
