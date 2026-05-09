@@ -10,7 +10,15 @@ from src.auth import ActorDepend
 from src.deps import IdemDepend, LLMDepend, RepoDepend
 from src.guards import OwnedSessionDepend, verify_patch_ownership
 from src.models import GuardrailCheck, Session
-from src.schemas import PatchCreate, PatchProposalOut, PlanStepOut, SessionCreate
+from src.schemas import (
+    PatchCreate,
+    PatchProposalOut,
+    PlanStepOut,
+    SessionCreate,
+    StepReadinessOut,
+    TestRunCreate,
+    TestRunOut,
+)
 
 router = APIRouter()
 
@@ -86,6 +94,39 @@ async def create_patch(
 
 
 @router.post(
+    "/sessions/{session_id}/plan/{step_id}/patches",
+    response_model=PatchProposalOut,
+)
+async def create_patch_for_step(
+    step_id: UUID,
+    session: OwnedSessionDepend,
+    repo: RepoDepend,
+    llm_client: LLMDepend,
+    idem: IdemDepend,
+) -> PatchProposalOut:
+    if idem.cached is not None:
+        logger.info("patch_idempotent_hit")
+        return PatchProposalOut.model_validate(json.loads(idem.cached))
+
+    result = await service.create_patch_for_step(session, step_id, repo, llm_client)
+
+    await repo.log_audit(
+        trace_id=session.trace_id,
+        actor=session.owner_id,
+        action="create_patch",
+        resource_type="patch",
+        resource_id=result.id,
+    )
+    if idem.key:
+        await repo.set_idempotency(
+            idem.key,
+            json.dumps(result.model_dump(mode="json")),
+        )
+
+    return result
+
+
+@router.post(
     "/sessions/{session_id}/patches/{patch_id}/check",
     response_model=list[GuardrailCheck],
 )
@@ -104,6 +145,27 @@ async def check_patch(
     _: Annotated[None, Depends(verify_patch_ownership)],
 ) -> list[GuardrailCheck]:
     return await service.check_patch(patch_id, repo)
+
+
+@router.get(
+    "/sessions/{session_id}/plan/{step_id}/readiness",
+    response_model=StepReadinessOut,
+)
+async def get_step_readiness(
+    step_id: UUID,
+    session: OwnedSessionDepend,
+    repo: RepoDepend,
+) -> StepReadinessOut:
+    return await service.get_step_readiness(session, step_id, repo)
+
+
+@router.post("/sessions/{session_id}/test-runs", response_model=TestRunOut)
+async def create_test_run(
+    payload: TestRunCreate,
+    session: OwnedSessionDepend,
+    repo: RepoDepend,
+) -> TestRunOut:
+    return await service.create_test_run(session, payload, repo)
 
 
 @router.get("/sessions/{session_id}", response_model=Session)
