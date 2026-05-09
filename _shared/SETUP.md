@@ -10,6 +10,9 @@ cd case-XX-NAME
 # 2. Add deps (adjust per case)
 uv add anthropic pydantic pytest ruff python-dotenv "fastapi[standard]"
 
+# Common backend deps for async DB, settings, rate limits, and structured logs
+uv add aiosqlite pydantic-settings slowapi "sqlalchemy[asyncio]" structlog
+
 # 3. Copy boilerplate
 cp ../_shared/README_5sections.md README.md
 cp ../_shared/AGENTS.md AGENTS.md
