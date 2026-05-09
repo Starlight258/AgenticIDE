@@ -1,23 +1,20 @@
+import json
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header
+import structlog
+from fastapi import APIRouter, Depends
 
 from src import service
-from src.auth import get_current_actor
-from src.deps import LLMDepend, RepoDepend, SettingsDepend
-from src.models import (
-    GuardrailCheck,
-    PatchCreate,
-    PatchProposalOut,
-    PlanStepOut,
-    Session,
-    SessionCreate,
-)
+from src.auth import ActorDepend
+from src.deps import IdemDepend, LLMDepend, RepoDepend
+from src.guards import OwnedSessionDepend, verify_patch_ownership
+from src.models import GuardrailCheck, Session
+from src.schemas import PatchCreate, PatchProposalOut, PlanStepOut, SessionCreate
 
 router = APIRouter()
 
-ActorDepend = Annotated[str, Depends(get_current_actor)]
+logger = structlog.get_logger(__name__)
 
 
 @router.post("/sessions", response_model=Session)
@@ -26,48 +23,66 @@ async def create_session(
     repo: RepoDepend,
     actor: ActorDepend,
 ) -> Session:
-    created = await service.create_session(payload, repo, actor)
-    return Session.model_validate(created)
+    return await service.create_session(payload, repo, actor)
 
 
 @router.post("/sessions/{session_id}/plan", response_model=list[PlanStepOut])
 async def create_plan(
-    session_id: UUID,
+    session: OwnedSessionDepend,
     repo: RepoDepend,
     llm_client: LLMDepend,
-    settings: SettingsDepend,
-    actor: ActorDepend,
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    idem: IdemDepend,
 ) -> list[PlanStepOut]:
-    return await service.create_plan(
-        session_id,
-        repo,
-        llm_client,
-        settings,
-        actor=actor,
-        idempotency_key=idempotency_key,
+    if idem.cached is not None:
+        logger.info("plan_idempotent_hit")
+        return [PlanStepOut.model_validate(item) for item in json.loads(idem.cached)]
+
+    result = await service.create_plan(session, repo, llm_client)
+
+    await repo.log_audit(
+        trace_id=session.trace_id,
+        actor=session.owner_id,
+        action="create_plan",
+        resource_type="session",
+        resource_id=session.id,
     )
+    if idem.key:
+        await repo.set_idempotency(
+            idem.key,
+            json.dumps([r.model_dump(mode="json") for r in result]),
+        )
+
+    return result
 
 
 @router.post("/sessions/{session_id}/patches", response_model=PatchProposalOut)
 async def create_patch(
-    session_id: UUID,
+    session: OwnedSessionDepend,
     payload: PatchCreate,
     repo: RepoDepend,
     llm_client: LLMDepend,
-    settings: SettingsDepend,
-    actor: ActorDepend,
-    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    idem: IdemDepend,
 ) -> PatchProposalOut:
-    return await service.create_patch(
-        session_id,
-        payload,
-        repo,
-        llm_client,
-        settings,
-        actor=actor,
-        idempotency_key=idempotency_key,
+    if idem.cached is not None:
+        logger.info("patch_idempotent_hit")
+        return PatchProposalOut.model_validate(json.loads(idem.cached))
+
+    result = await service.create_patch(session, payload, repo, llm_client)
+
+    await repo.log_audit(
+        trace_id=session.trace_id,
+        actor=session.owner_id,
+        action="create_patch",
+        resource_type="patch",
+        resource_id=result.id,
     )
+    if idem.key:
+        await repo.set_idempotency(
+            idem.key,
+            json.dumps(result.model_dump(mode="json")),
+        )
+
+    return result
 
 
 @router.post(
@@ -75,27 +90,22 @@ async def create_patch(
     response_model=list[GuardrailCheck],
 )
 async def check_patch_in_session(
-    session_id: UUID,
     patch_id: UUID,
+    session: OwnedSessionDepend,
     repo: RepoDepend,
-    actor: ActorDepend,
 ) -> list[GuardrailCheck]:
-    return await service.check_patch_in_session(session_id, patch_id, repo, actor)
+    return await service.check_patch_in_session(session, patch_id, repo)
 
 
 @router.post("/patches/{patch_id}/check", response_model=list[GuardrailCheck])
 async def check_patch(
     patch_id: UUID,
     repo: RepoDepend,
-    actor: ActorDepend,
+    _: Annotated[None, Depends(verify_patch_ownership)],
 ) -> list[GuardrailCheck]:
-    return await service.check_patch(patch_id, repo, actor)
+    return await service.check_patch(patch_id, repo)
 
 
 @router.get("/sessions/{session_id}", response_model=Session)
-async def get_session(
-    session_id: UUID,
-    repo: RepoDepend,
-    actor: ActorDepend,
-) -> Session:
-    return Session.model_validate(await service.get_session(session_id, repo, actor))
+async def get_session(session: OwnedSessionDepend) -> Session:
+    return session

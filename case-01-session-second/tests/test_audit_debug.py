@@ -1,10 +1,10 @@
 from fastapi.testclient import TestClient
 
-from src.config import Settings
 from src.deps import get_llm, get_repo, get_settings
 from src.main import app
-from src.models import Brand, PatchProposalInput, PlanStepInput
-from src.repository import InMemoryRepository
+from src.models import Brand
+from src.schemas import PatchProposalInput, PlanStepInput
+from tests.memory_repository import InMemoryRepository
 
 AUTH = {"Authorization": "Bearer test-token"}
 client = TestClient(app)
@@ -18,7 +18,6 @@ class AuditDebugLLM:
         title: str,
         description: str,
         brand: Brand,
-        settings: Settings,
     ) -> list[PlanStepInput]:
         return [PlanStepInput(description="test", target_files=["src/test.py"])]
 
@@ -26,7 +25,6 @@ class AuditDebugLLM:
         self,
         step: PlanStepInput,
         brand: Brand,
-        settings: Settings,
     ) -> PatchProposalInput:
         return PatchProposalInput(diff="--- a/src/test.py\n+++ b/src/test.py\n")
 
@@ -34,6 +32,7 @@ class AuditDebugLLM:
 def test_audit_log_debug() -> None:
     _debug_repo.clear()
 
+    from src.config import Settings
     test_settings = Settings(anthropic_api_key="", env="test")
     app.dependency_overrides[get_repo] = lambda: _debug_repo
     app.dependency_overrides[get_settings] = lambda: test_settings

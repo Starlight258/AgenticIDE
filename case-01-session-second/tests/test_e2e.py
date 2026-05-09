@@ -5,8 +5,8 @@ from fastapi.testclient import TestClient
 from src.deps import get_llm
 from src.llm import LLMUnavailableError
 from src.main import app
-from src.models import Brand, PatchProposalInput, PlanStepInput
-from src.config import Settings
+from src.models import Brand
+from src.schemas import PatchProposalInput, PlanStepInput
 
 client = TestClient(app)
 
@@ -246,7 +246,6 @@ def test_circuit_breaker_returns_503_after_llm_failures() -> None:
             title: str,
             description: str,
             brand: Brand,
-            settings: Settings,
         ) -> list[PlanStepInput]:
             raise LLMUnavailableError("LLM unavailable")
 
@@ -254,7 +253,6 @@ def test_circuit_breaker_returns_503_after_llm_failures() -> None:
             self,
             step: PlanStepInput,
             brand: Brand,
-            settings: Settings,
         ) -> PatchProposalInput:
             raise LLMUnavailableError("LLM unavailable")
 

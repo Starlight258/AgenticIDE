@@ -1,11 +1,10 @@
 import pytest
 
-from src.config import Settings
 from src.deps import get_llm, get_repo, get_settings
 from src.main import app
 from src.models import Brand
-from src.models import PatchProposalInput, PlanStepInput
-from src.repository import InMemoryRepository
+from src.schemas import PatchProposalInput, PlanStepInput
+from tests.memory_repository import InMemoryRepository
 
 _MOCK_PLAN = [
     PlanStepInput(
@@ -37,7 +36,6 @@ class FakeLLM:
         title: str,
         description: str,
         brand: Brand,
-        settings: Settings,
     ) -> list[PlanStepInput]:
         return _MOCK_PLAN
 
@@ -45,7 +43,6 @@ class FakeLLM:
         self,
         step: PlanStepInput,
         brand: Brand,
-        settings: Settings,
     ) -> PatchProposalInput:
         return _MOCK_PATCH
 
@@ -60,6 +57,7 @@ def reset_repo():
 @pytest.fixture(autouse=True)
 def override_dependencies():
     """Override DI to use InMemoryRepository and test Settings."""
+    from src.config import Settings
     test_settings = Settings(anthropic_api_key="", env="test")
 
     app.dependency_overrides[get_repo] = lambda: _repo

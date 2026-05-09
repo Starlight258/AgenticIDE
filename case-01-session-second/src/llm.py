@@ -11,11 +11,12 @@ from tenacity import (
 
 from src.config import Settings
 from src.logging_config import get_logger
-from src.models import Brand, PatchProposalInput, PlanStepInput
+from src.models import Brand
+from src.schemas import PatchProposalInput, PlanStepInput
 
 logger = get_logger(__name__)
 
-PLAN_TOOL = {
+_PLAN_TOOL_SCHEMA = {
     "name": "output",
     "description": "Return implementation plan steps.",
     "input_schema": {
@@ -37,7 +38,7 @@ PLAN_TOOL = {
     },
 }
 
-PATCH_TOOL = {
+_PATCH_TOOL_SCHEMA = {
     "name": "output",
     "description": "Return a unified diff patch proposal.",
     "input_schema": {
@@ -58,100 +59,80 @@ class LLMProvider(Protocol):
         title: str,
         description: str,
         brand: Brand,
-        settings: Settings,
     ) -> list[PlanStepInput]: ...
 
     async def create_patch(
         self,
         step: PlanStepInput,
         brand: Brand,
-        settings: Settings,
     ) -> PatchProposalInput: ...
 
 
 class AnthropicLLM:
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
     async def create_plan(
         self,
         title: str,
         description: str,
         brand: Brand,
-        settings: Settings,
     ) -> list[PlanStepInput]:
-        return await create_plan(title, description, brand, settings)
+        if not self._settings.anthropic_api_key:
+            logger.info("llm.mock_plan", title=title, brand=brand)
+            return _mock_plan()
+
+        prompt = _plan_prompt(title, description, brand)
+        try:
+            result, _ = await self._call_tool_with_retry(_PLAN_TOOL_SCHEMA, prompt)
+        except anthropic.APIError as exc:
+            raise LLMUnavailableError("LLM unavailable") from exc
+
+        logger.info("llm.plan_created", brand=brand, steps=len(result.get("steps", [])))
+        return [PlanStepInput.model_validate(step) for step in result["steps"]]
 
     async def create_patch(
         self,
         step: PlanStepInput,
         brand: Brand,
-        settings: Settings,
     ) -> PatchProposalInput:
-        return await create_patch(step, brand, settings)
+        if not self._settings.anthropic_api_key:
+            logger.info("llm.mock_patch", brand=brand)
+            return _mock_patch(step)
 
+        prompt = _patch_prompt(step, brand)
+        try:
+            result, _ = await self._call_tool_with_retry(_PATCH_TOOL_SCHEMA, prompt)
+        except anthropic.APIError as exc:
+            raise LLMUnavailableError("LLM unavailable") from exc
 
-async def create_plan(
-    title: str,
-    description: str,
-    brand: Brand,
-    settings: Settings,
-) -> list[PlanStepInput]:
-    if not settings.anthropic_api_key:
-        logger.info("llm.mock_plan", title=title, brand=brand)
-        return _mock_plan()
+        logger.info("llm.patch_created", brand=brand)
+        return PatchProposalInput.model_validate(result)
 
-    prompt = _plan_prompt(title, description, brand)
-    try:
-        result, _ = await _call_tool_with_retry(PLAN_TOOL, prompt, settings)
-    except Exception as exc:
-        raise LLMUnavailableError("LLM unavailable") from exc
-
-    logger.info("llm.plan_created", brand=brand, steps=len(result.get("steps", [])))
-    return [PlanStepInput.model_validate(step) for step in result["steps"]]
-
-
-async def create_patch(
-    step: PlanStepInput,
-    brand: Brand,
-    settings: Settings,
-) -> PatchProposalInput:
-    if not settings.anthropic_api_key:
-        logger.info("llm.mock_patch", brand=brand)
-        return _mock_patch(step)
-
-    prompt = _patch_prompt(step, brand)
-    try:
-        result, _ = await _call_tool_with_retry(PATCH_TOOL, prompt, settings)
-    except Exception as exc:
-        raise LLMUnavailableError("LLM unavailable") from exc
-
-    logger.info("llm.patch_created", brand=brand)
-    return PatchProposalInput.model_validate(result)
-
-
-@retry(
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(min=1, max=10),
-    retry=retry_if_exception_type(anthropic.APIStatusError),
-    reraise=True,
-)
-async def _call_tool_with_retry(
-    tool: dict[str, Any],
-    prompt: str,
-    settings: Settings,
-) -> tuple[dict[str, Any], dict[str, int]]:
-    """Call the Anthropic tool API with retry on APIStatusError."""
-    client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
-    response = await client.messages.create(
-        model=settings.model,
-        max_tokens=4096,
-        tools=[tool],
-        tool_choice={"type": "tool", "name": "output"},
-        messages=[{"role": "user", "content": prompt}],
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(min=1, max=10),
+        retry=retry_if_exception_type(anthropic.APIStatusError),
+        reraise=True,
     )
-    usage = {
-        "input_tokens": response.usage.input_tokens,
-        "output_tokens": response.usage.output_tokens,
-    }
-    return response.content[0].input, usage
+    async def _call_tool_with_retry(
+        self,
+        tool: dict[str, Any],
+        prompt: str,
+    ) -> tuple[dict[str, Any], dict[str, int]]:
+        client = anthropic.AsyncAnthropic(api_key=self._settings.anthropic_api_key)
+        response = await client.messages.create(
+            model=self._settings.model,
+            max_tokens=4096,
+            tools=[tool],
+            tool_choice={"type": "tool", "name": "output"},
+            messages=[{"role": "user", "content": prompt}],
+        )
+        usage = {
+            "input_tokens": response.usage.input_tokens,
+            "output_tokens": response.usage.output_tokens,
+        }
+        return response.content[0].input, usage
 
 
 def _read_agents(brand: Brand) -> str:
