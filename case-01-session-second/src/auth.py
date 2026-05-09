@@ -1,4 +1,6 @@
-from fastapi import HTTPException, Security
+from typing import Annotated
+
+from fastapi import Depends, HTTPException, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 _bearer = HTTPBearer(auto_error=False)
@@ -11,3 +13,6 @@ async def get_current_actor(
     if credentials is None or not credentials.credentials:
         raise HTTPException(status_code=403, detail="Missing or invalid bearer token")
     return credentials.credentials
+
+
+ActorDepend = Annotated[str, Depends(get_current_actor)]
