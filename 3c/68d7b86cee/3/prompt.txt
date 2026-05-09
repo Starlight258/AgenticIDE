@@ -1,0 +1,75 @@
+@case-01-session-second/ 에서 이 실수를 했는데 어떤 문제야? 
+다만 큰 감점이 있습니다. second는 case-01-session-second/src/llm.py:67에서 AGENTS.md 내용을 LLM 프롬프트에
+    넣지 않고, case-01-session-second/src/guardrails.py:9도 파일을 읽지 않습니다. 과제의 “Guardrails MUST
+    consult brand's AGENTS.md”를 엄격히 보면 P1입니다. 이게 무슨 말이야?
+
+
+• 말 그대로 second 구현은 efood의 AGENTS.md를 실제 실행 경로에서 참고하지 않고, 규칙을 코드에 하드코딩했다는
+  뜻입니다.
+
+  과제 요구사항은:
+
+  POST /sessions/{id}/patches/{patchId}/check
+
+  - patch에 guardrail을 실행한다
+  - Guardrails MUST consult the brand's AGENTS.md
+
+  즉 평가자가 기대할 수 있는 흐름은 대략 이겁니다.
+
+  # check 실행 시점
+  agents_text = read("efood/AGENTS.md")
+  rules = derive_or_confirm_rules_from(agents_text)
+  checks = run_guardrails(patch, rules)
+
+  그런데 case-01-session-second는 case-01-session-second/src/guardrails.py:9에서 바로 이렇게 돼 있습니다.
+
+  def run_checks(diff: str) -> list[GuardrailCheck]:
+      added = _added_lines(diff)
+      return [
+          _check("R1", "WARN", _has_relative_import, added),
+          _check("R2", "BLOCK", _has_shell_execution, added),
+          _check("R3", "WARN", _has_public_function_without_docstring, added),
+          _check("R4", "BLOCK", _has_print_call, added),
+          _check("R5", "BLOCK", _has_requests_call, added),
+      ]
+
+  여기에는 efood/AGENTS.md를 읽는 코드가 없습니다. case-01-session-second/src/llm.py:67의 프롬프트도:
+
+  f"Create an implementation plan for a {brand} AI coding session.\n"
+
+  정도라서 AGENTS.md 내용을 LLM에게 주지도 않습니다.
+
+  반대로 backend는 완벽하진 않아도 case-01-session-backend/src/llm.py:12에서:
+
+  def _read_agents(brand: str) -> str:
+      return Path(f"{brand}/AGENTS.md").read_text()
+
+  이렇게 브랜드별 AGENTS.md를 읽고, system prompt에 넣습니다.
+
+  내가 “P1”이라고 한 이유는, second의 guardrail 결과가 지금은 우연히 AGENTS.md와 맞지만, 파일을 바꿔도 동작이
+  안 바뀝니다. 그러면 “브랜드 manifesto를 consult한다”는 제품 컨셉이 약해집니다. 다만 90분 과제 기준으로는
+  “R1-R5를 정확히 구현했느냐”를 더 크게 볼 수도 있어서, 이걸 P2로 낮게 보는 평가자도 있을 수 있습니다.
+
+---
+
+왜 저 문제가 발생한거야? 설계를 마지막에 다 못본거같은데 /assignment workflow 마지막에 JD에 따라 평가해야하는 과정이 추가되어야하는거아니야? 그리고 전반적으로 설계, 구현도 문제가 있었던거같은데
+
+---
+
+응 그렇게 해줘. 그럼 더이상 저런 요구사항이 빠지는 경우가 없어지는거지? 절대 그런 상황은 막고 싶어
+
+---
+
+workflow 자체도 고친거야? /assignment ?
+
+---
+
+마지막에 요구사항대로 잘 구현되었는지 확인하는 step 되는거지?
+
+---
+
+마지막에 JD 보면서 잘 구현되는지 봐야할거같은데 checkbox 만들어도 되고 요구사항들은 다 구현해야돼
+
+---
+
+아니 마지막에 과제 assignment 내용 보면서 잘 구현되는지 봐야할거같아. @assignment.md 를 직접 보거나 없으면 입력하게 해서

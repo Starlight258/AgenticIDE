@@ -1,0 +1,140 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "3c68d7b86cee",
+  "session_id": "f638e14b-34cc-4070-9b29-b8222de2f336",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-09T02:08:30.386691Z",
+  "branch": "main",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md",
+    "_shared/LESSONS_LEARNED.md",
+    "case-01-session-backend/.claude/commands/assignment.md",
+    "case-01-session-second/src/guardrails.py",
+    "case-01-session-second/src/llm.py",
+    "case-01-session-second/src/service.py",
+    "case-01-session-second/tests/conftest.py",
+    "case-01-session-second/tests/test_e2e.py",
+    "case-01-session-second/tests/test_guardrails.py"
+  ],
+  "agent": "Claude Code",
+  "model": "",
+  "turn_id": "0da8fa7a3dac",
+  "token_usage": {
+    "input_tokens": 3014,
+    "cache_creation_tokens": 84270,
+    "cache_read_tokens": 3061212,
+    "output_tokens": 36302,
+    "api_call_count": 54
+  },
+  "session_metrics": {
+    "turn_count": 6
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-09T02:08:30.367287Z",
+    "agent_lines": 356,
+    "agent_removed": 64,
+    "human_added": 135,
+    "human_modified": 7,
+    "human_removed": 0,
+    "total_committed": 498,
+    "total_lines_changed": 619,
+    "agent_percentage": 67.85137318255249,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 1175,
+      "user_lines_removed": 2,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 48,
+        "case-01-session-backend/.claude/settings.local.json": 7,
+        "case-01-session-second/tests/conftest.py": 24,
+        "case-01-session-second/tests/test_e2e.py": 1,
+        "evaluator/.env": 1,
+        "evaluator/.env.example": 1,
+        "evaluator/.python-version": 1,
+        "evaluator/pyproject.toml": 23,
+        "evaluator/src/evaluator.py": 197,
+        "evaluator/src/fetcher.py": 92,
+        "evaluator/src/main.py": 79,
+        "evaluator/src/models.py": 76,
+        "evaluator/src/report.py": 82,
+        "evaluator/tests/test_fetcher.py": 63,
+        "evaluator/tests/test_models.py": 93,
+        "evaluator/uv.lock": 387
+      },
+      "user_removed_per_file": {
+        "case-01-session-second/tests/conftest.py": 1,
+        "case-01-session-second/tests/test_e2e.py": 1
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 55,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1212,
+      "agent_lines_removed": 19,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 48,
+        "case-01-session-backend/.claude/settings.local.json": 7
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 55,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1212,
+      "agent_lines_removed": 19,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 48,
+        "case-01-session-backend/.claude/settings.local.json": 7
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 55,
+      "user_lines_removed": 0,
+      "agent_lines_added": 1336,
+      "agent_lines_removed": 42,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 48,
+        "case-01-session-backend/.claude/settings.local.json": 7
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 56,
+      "user_lines_removed": 1,
+      "agent_lines_added": 1337,
+      "agent_lines_removed": 43,
+      "user_added_per_file": {
+        ".claude/commands/assignment.md": 1,
+        ".claude/settings.local.json": 48,
+        "case-01-session-backend/.claude/settings.local.json": 7
+      },
+      "user_removed_per_file": {
+        ".claude/commands/assignment.md": 1
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 142,
+      "user_lines_removed": 4,
+      "agent_lines_added": 1342,
+      "agent_lines_removed": 46,
+      "user_added_per_file": {
+        ".claude/commands/assignment.md": 6,
+        ".claude/settings.local.json": 48,
+        "case-01-session-backend/.claude/settings.local.json": 7,
+        "case-01-session-second/assignment.md": 81
+      },
+      "user_removed_per_file": {
+        ".claude/commands/assignment.md": 4
+      }
+    }
+  ]
+}
