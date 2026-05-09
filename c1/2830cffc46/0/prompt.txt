@@ -1,0 +1,577 @@
+/assignment 대학교 수강신청 시스템을 구축 
+매 학기 수강신청 기간마다 서버가 다운되어 학생들의 불만이 폭주하고 있습니다. 이번에는 제대로 된 시스템을 만들어주세요.”
+
+메모에는 기본 기능(학생 조회, 강좌 조회, 수강신청, 수강취소, 시간표 조회)이 나열되어 있습니다. 18학점 상한과 시간 충돌도 언급됩니다. 그리고 이 한 줄:
+
+“정원이 1명 남은 강좌에 100명이 동시에 신청해도, 정확히 1명만 성공해야 합니다.”
+
+ 
+명시되지 않은 모든 사항은 자유롭게 결정하세요.”
+
+---
+
+@case-01-session-second/src/main.py 에서 exception_handler들 파일로 분리해줘 그리고 이거 @_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md 에 저장해줘. 그리고 opentelemetry도 too much니까 지우고 이건 protocol 파일에 저장 안해도 돼
+
+---
+
+오키 그리고 service에 autit log나 idempotency 응답 캐싱, 요청 actor가 세션 owner인지 확인 등 반복되는 코드가 너무 많아. 이건 srp를 지키지 않은거야. 대답해봐
+
+---
+
+dependency로 빼는건 어때? 이런식으로 서비스 코드가 보이면 좋겠어 
+async def create_plan(
+    session: Session,
+    repo: SessionRepository,
+    llm_client: LLMProvider,
+    settings: Settings,
+) -> list[PlanStepOut]:
+    step_inputs = await llm_client.create_plan(
+        session.title,
+        session.description,
+        session.brand,
+        settings,
+    )
+    steps = [_to_plan_step(step) for step in step_inputs]
+    await repo.save_steps(session.id, steps)
+    return [PlanStepOut.model_validate(step) for step in steps]
+
+---
+
+좀 더 쉽게 설명해줘 그리고 멱등성 키에 캐시는 어떤 구조로 되는거야?
+
+---
+
+엉 근데 그러면 캐시 지우는 코드도 있어?
+
+---
+
+우선  Dependency로 빼는 것부터 해줘. 그리고 그거 @_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md 에 추가하거나 구현시에 자연스럽게 알 수 있도록 기록해줘 service에 너무 많은 책임이 오면 안되고 srp를 지켜야지
+
+---
+
+왜 이름이 @src/deps.py 야?
+
+---
+
+근데 owner랑 actor 비교하는것도  @src/deps.py 로 빼야돼? 인증만 생각하고 있었는데 그래서 auth.py 이런식으로 둬도 괜찮을거라 생각했어. 그리고 멱등성은 뭐 deps.py에 두거나 다른 이름으로 해도 되고
+
+---
+
+인증 부분만 auth.py로 빼고, 인가는 service에서 하거나 deps.py에 두는건 어때?
+
+---
+
+/code-review service와 deps.py, @src/auth.py 부분만. srp랑 yagni 잘 지켜졌는지
+
+---
+
+이렇게 인증과 인가를 한 곳에 두는게 맞나?
+
+---
+
+그럼 그거 @../_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md 에 반영해줘. 인증, 인가 분리랑 service srp 하는거 그리고 코드로도 그렇게 구현해줘
+
+---
+
+코드 리뷰에서 dead code가 있다던데 코드 리뷰사항에서 반영할거 정리해줘 그리고 이런 상황이 안발생하려면 어떻게 해야할까?
+
+---
+
+응 예방하는 방법도 적용할 수 있어?
+
+---
+
+코드 리뷰 다른 사항들도 있었잖아
+
+---
+
+2번도 기록하면 좋겠는데.
+
+---
+
+이것도 한번 너가 대답해봐. 그리고 dto랑 도메인 모델이랑 다른거아니야? 같나? 
+그리고 repository도 인터페이스랑 구현체랑 분리해야지
+그리고 tool 좀 더 설명해줘 input 스키마만 보여서
+그리고 model이랑 db model이랑 원래 분리해?
+그리고 AliasChoices("ANTHROPIC_API_KEY", "anthropic_api_key") 이런건 하지마 불필요하잖아. 
+맞는 지적입니다. 지금 코드는 과제 구현으로는 돌아가지만, 아키텍처 관점에서는 몇 군데가 섞여 있습니다.
+
+**DTO랑 도메인 모델**
+
+원래는 다릅니다.
+
+지금 [src/models.py](/Users/mae/.codex/worktrees/b8e4/AgenticIDE/case-01-session-second/src/models.py)가 여러 역할을 같이 하고 있습니다.
+
+```text
+SessionCreate        -> request DTO
+PatchCreate          -> request DTO
+PlanStepOut          -> response DTO
+PatchProposalOut     -> response DTO
+PlanStepInput        -> LLM DTO
+PatchProposalInput   -> LLM DTO
+Session              -> domain model처럼 사용
+PlanStep             -> domain model처럼 사용
+PatchProposal        -> domain model처럼 사용
+GuardrailCheck       -> domain model + response model처럼 사용
+```
+
+즉 현재는 **DTO와 domain model이 같은 파일에 섞여 있습니다.**
+
+더 깔끔하게 하려면 나누는 게 맞습니다.
+
+```text
+src/domain/models.py
+  Session
+  PlanStep
+  PatchProposal
+  GuardrailCheck
+
+src/schemas/session.py
+  SessionCreateRequest
+  SessionResponse
+  PlanStepResponse
+  PatchProposalResponse
+
+src/llm/schemas.py
+  PlanStepLLMOutput
+  PatchProposalLLMOutput
+```
+
+작은 프로젝트에서는 섞어도 되지만, 지금처럼 DB, LLM, API, audit, idempotency가 들어오면 분리하는 게 낫습니다.
+
+**repository 인터페이스와 구현체**
+
+이것도 맞습니다.
+
+현재 [src/repository.py](/Users/mae/.codex/worktrees/b8e4/AgenticIDE/case-01-session-second/src/repository.py)에:
+
+```python
+class SessionRepository(Protocol):
+class SQLiteRepository:
+class InMemoryRepository:
+```
+
+가 한 파일에 있습니다.
+
+동작은 하지만 관심사가 섞여 있습니다.
+
+더 좋은 구조는:
+
+```text
+src/repositories/session_repository.py
+  SessionRepository protocol/interface
+
+src/repositories/sqlite_session_repository.py
+  SQLiteSessionRepository
+
+src/repositories/memory_session_repository.py
+  InMemorySessionRepository
+```
+
+또는 더 세분화하면:
+
+```text
+src/repositories/interfaces.py
+src/repositories/sqlite.py
+src/repositories/memory.py
+```
+
+지금처럼 한 파일에 다 넣으면 처음엔 편하지만, 구현체가 늘거나 테스트가 많아질수록 파일이 커지고 읽기 어려워집니다.
+
+**LLM tool 설명**
+
+[src/llm.py](/Users/mae/.codex/worktrees/b8e4/AgenticIDE/case-01-session-second/src/llm.py)에 있는 `PLAN_TOOL`, `PATCH_TOOL`은 Anthropic tool use용 schema입니다.
+
+예를 들어 `PLAN_TOOL`은 LLM에게 이런 형태로만 답하라고 강제합니다.
+
+```json
+{
+  "steps": [
+    {
+      "description": "Implement guardrail checks",
+      "target_files": ["src/guardrails.py"]
+    }
+  ]
+}
+```
+
+즉 LLM이 자유 텍스트로:
+
+```text
+Sure, here is the plan...
+```
+
+이렇게 말하지 못하게 하고, `output`이라는 tool 호출 결과로 structured payload를 내게 합니다.
+
+코드에서는 이렇게 호출합니다.
+
+```python
+response = await client.messages.create(
+    model=settings.model,
+    max_tokens=4096,
+    tools=[tool],
+    tool_choice={"type": "tool", "name": "output"},
+    messages=[{"role": "user", "content": prompt}],
+)
+```
+
+핵심은 이 부분입니다.
+
+```python
+tools=[tool]
+tool_choice={"type": "tool", "name": "output"}
+```
+
+이건 “반드시 `output` tool을 호출해서 정해진 JSON schema로 응답해라”는 뜻입니다.
+
+그 다음:
+
+```python
+return response.content[0].input, usage
+```
+
+으로 tool input payload를 꺼냅니다.
+
+이후 Pydantic으로 다시 검증합니다.
+
+```python
+PlanStepInput.model_validate(step)
+PatchProposalInput.model_validate(result)
+```
+
+그래서 흐름은:
+
+```text
+Prompt
+-> Anthropic tool_use
+-> JSON-like structured output
+-> Pydantic validation
+-> service에서 사용
+```
+
+입니다.
+
+다만 이름이 `PLAN_TOOL`, `PATCH_TOOL`이라 조금 추상적입니다. 더 명확히 하려면 `PLAN_OUTPUT_TOOL_SCHEMA`, `PATCH_OUTPUT_TOOL_SCHEMA` 같은 이름이 낫습니다.
+
+**model이랑 db model 분리**
+
+네, 보통 분리합니다.
+
+현재도 어느 정도 분리되어 있습니다.
+
+```text
+src/models.py      -> Pydantic model
+src/db_models.py   -> SQLModel table model
+```
+
+이 분리는 맞는 방향입니다.
+
+이유는 API/domain 모델과 DB 테이블은 변하는 이유가 다르기 때문입니다.
+
+예를 들어 API에서는:
+
+```python
+target_files: list[str]
+```
+
+로 쓰고 싶지만 DB에서는 SQLite 때문에:
+
+```python
+target_files: str  # JSON encoded
+```
+
+로 저장합니다.
+
+또 API 응답에는 보여주고 싶지 않은 DB 컬럼이 있을 수 있고, 반대로 DB에는 없지만 계산해서 내려주는 필드도 있을 수 있습니다.
+
+그래서 일반적으로는 분리합니다.
+
+```text
+Domain model != DTO != DB entity
+```
+
+다만 지금 문제는 `models.py` 안에서 domain과 DTO가 섞여 있다는 점입니다.  
+`models.py`와 `db_models.py`가 분리된 건 좋고, 그 안에서 DTO/domain을 더 나누면 더 좋습니다.
+
+**AliasChoices 불필요**
+
+동의합니다.
+
+현재 [src/config.py](/Users/mae/.codex/worktrees/b8e4/AgenticIDE/case-01-session-second/src/config.py)에 이런 코드가 있습니다.
+
+```python
+validation_alias=AliasChoices("ANTHROPIC_API_KEY", "anthropic_api_key")
+```
+
+이건 환경변수 이름을 여러 개 허용하겠다는 뜻인데, 지금 프로젝트에서는 과합니다.
+
+환경변수는 보통 하나의 canonical name만 정하면 됩니다.
+
+예:
+
+```python
+class Settings(BaseSettings):
+    anthropic_api_key: str = ""
+    model: str = "claude-sonnet-4-5"
+    use_vertex: bool = False
+    db_url: str = "sqlite+aiosqlite:///./sessions.db"
+    env: str = "development"
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        extra="ignore",
+        env_prefix="",
+    )
+```
+
+그리고 `.env`에는 명확하게:
+
+```env
+ANTHROPIC_API_KEY=
+MODEL=claude-sonnet-4-5
+USE_VERTEX=false
+DB_URL=sqlite+aiosqlite:///./sessions.db
+ENV=development
+```
+
+처럼 쓰면 됩니다.
+
+더 엄격하게 가려면 `ANTHROPIC_MODEL` 하나만 쓰거나 `MODEL` 하나만 쓰는 식으로 정해야 합니다. 여러 alias를 열어두면 편해 보이지만, 실제로는 설정 출처가 불명확해지고 디버깅이 어려워집니다.
+
+정리하면:
+
+```text
+네, DTO/domain 분리하는 게 맞음
+repository interface/implementation도 파일 분리하는 게 맞음
+tool은 Anthropic structured output 강제용 schema임
+model/db model은 분리하는 게 일반적으로 맞음
+AliasChoices는 이 프로젝트에선 불필요함
+```
+
+현재 코드는 “기능 추가가 빠르게 들어간 과제형 구조”에 가깝고, 네가 말한 방향으로 정리하면 더 production-like한 구조가 됩니다.
+
+---
+
+오키 답변대로 수정해줘 그리고 수정한 리스트 알려줘 프로토콜에 반영하게
+
+---
+
+한글로 말해줘
+
+---
+
+변경사항 한글로 말해줘
+
+---
+
+@../_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md 에 반영해줘
+
+---
+
+@src/llm.py LLMUnavailableError 이거 굳이 필요해? 그리고 
+LLMProvider랑 AnthropicLLM 가 여기서 왜 필요한거야? 이거 클래스로 분리하는게 낫나? 
+**`LLMUnavailableError`는 굳이 필요해?**
+
+지금 구조에서는 있어도 되지만, 꼭 필요하진 않습니다.
+
+현재 흐름은 이렇습니다.
+
+```python
+try:
+    result, _ = await _call_tool_with_retry(...)
+except Exception as exc:
+    raise LLMUnavailableError("LLM unavailable") from exc
+```
+
+그리고 [src/main.py](/Users/mae/.codex/worktrees/b8e4/AgenticIDE/case-01-session-second/src/main.py)에서:
+
+```python
+@app.exception_handler(LLMUnavailableError)
+async def llm_unavailable_handler(...):
+    return JSONResponse(status_code=503, ...)
+```
+
+즉 목적은 명확합니다.
+
+```text
+Anthropic 호출 실패를 HTTP 503으로 바꾸기 위해
+```
+
+그래서 API 관점에서는 나쁘지 않습니다.
+
+다만 현재 구현은 너무 넓게 잡습니다.
+
+```python
+except Exception
+```
+
+이러면 Anthropic 장애뿐 아니라 코드 버그, schema mismatch, KeyError 같은 것도 전부 `LLMUnavailableError`로 바뀔 수 있습니다. 그러면 실제 버그가 503으로 숨겨집니다.
+
+더 낫게 하려면 둘 중 하나입니다.
+
+1. 유지하되 좁게 잡기
+
+```python
+except anthropic.APIError as exc:
+    raise LLMUnavailableError("LLM unavailable") from exc
+```
+
+2. 제거하고 route/service에서 직접 `anthropic.APIError` 계열을 핸들링하기
+
+하지만 외부 라이브러리 예외를 앱 전체에 퍼뜨리는 건 별로라서, 나는 **`LLMUnavailableError`는 유지하되 catch 범위를 좁히는 게 낫다**고 봅니다.
+
+즉 이 예외 자체는 의미 있습니다.
+
+```text
+외부 LLM provider 장애를 우리 앱의 도메인/API 예외로 번역
+```
+
+그런데 지금처럼 모든 `Exception`을 감싸는 건 좋지 않습니다.
+
+**`LLMProvider`랑 `AnthropicLLM`은 왜 필요해?**
+
+현재 구조에서는 FastAPI dependency injection 때문에 들어간 겁니다.
+
+[src/deps.py](/Users/mae/.codex/worktrees/b8e4/AgenticIDE/case-01-session-second/src/deps.py)에 이런 코드가 있습니다.
+
+```python
+def get_llm() -> LLMProvider:
+    return AnthropicLLM()
+```
+
+그리고 route에서는:
+
+```python
+llm_client: LLMDepend
+```
+
+를 받아 service에 넘깁니다.
+
+service는 구체적인 `AnthropicLLM`이 아니라 `LLMProvider` 인터페이스만 압니다.
+
+```python
+async def create_plan(..., llm_client: LLMProvider, ...)
+```
+
+장점은 이겁니다.
+
+```text
+service가 Anthropic SDK에 직접 의존하지 않음
+테스트에서 fake/mock LLM을 쉽게 넣을 수 있음
+나중에 Vertex/Claude/OpenAI 등 provider 교체 가능
+```
+
+그런데 지금 구현을 보면 `AnthropicLLM` 클래스는 별로 하는 일이 없습니다.
+
+```python
+class AnthropicLLM:
+    async def create_plan(...):
+        return await create_plan(...)
+
+    async def create_patch(...):
+        return await create_patch(...)
+```
+
+그냥 모듈 함수로 위임만 합니다.
+
+그래서 현재 상태만 보면 약간 애매합니다.
+
+```text
+인터페이스를 둔 의도는 좋음
+하지만 구현 클래스가 너무 얇음
+모듈 함수와 클래스가 중복됨
+```
+
+**클래스로 분리하는 게 낫나?**
+
+내 판단은: **네, 제대로 할 거면 클래스로 정리하는 게 낫습니다.**
+
+지금처럼 함수와 클래스가 섞인 구조보다, 차라리 이렇게 하는 게 명확합니다.
+
+```python
+class AnthropicLLMClient:
+    def __init__(self, settings: Settings):
+        self._settings = settings
+        self._client = anthropic.AsyncAnthropic(
+            api_key=settings.anthropic_api_key
+        )
+
+    async def create_plan(...):
+        ...
+
+    async def create_patch(...):
+        ...
+
+    async def _call_tool_with_retry(...):
+        ...
+```
+
+그러면 `settings`를 매번 method argument로 넘기지 않아도 됩니다.
+
+현재는:
+
+```python
+await llm_client.create_plan(title, description, brand, settings)
+```
+
+인데, 클래스에 settings를 주입하면:
+
+```python
+await llm_client.create_plan(title, description, brand)
+```
+
+가 됩니다.
+
+`deps.py`도 이렇게 바뀔 수 있습니다.
+
+```python
+def get_llm(settings: SettingsDepend) -> LLMProvider:
+    return AnthropicLLMClient(settings)
+```
+
+더 좋은 구조는:
+
+```text
+src/llm/provider.py
+  LLMProvider Protocol
+
+src/llm/anthropic_client.py
+  AnthropicLLMClient
+
+src/llm/schemas.py
+  PLAN_TOOL, PATCH_TOOL, LLM output DTO
+
+src/llm/prompts.py
+  _plan_prompt, _patch_prompt
+```
+
+하지만 프로젝트가 작으면 파일을 너무 쪼갤 필요는 없습니다.
+
+최소 개선은 이 정도입니다.
+
+```text
+LLMProvider 유지
+AnthropicLLM을 실제 구현 클래스로 만들기
+모듈-level create_plan/create_patch 제거
+settings를 생성자에 주입
+LLMUnavailableError는 유지하되 anthropic.APIError만 감싸기
+```
+
+**결론**
+
+`LLMUnavailableError`:
+- 필요성 있음
+- 하지만 `except Exception`은 너무 넓음
+- `anthropic.APIError` 계열만 감싸는 게 좋음
+
+`LLMProvider`:
+- service가 Anthropic에 직접 묶이지 않게 하려는 인터페이스
+- 테스트/교체 가능성을 위해 의미 있음
+
+`AnthropicLLM`:
+- 지금은 너무 얇아서 애매함
+- 유지하려면 제대로 client 클래스로 만들고 settings/client/retry/prompt 호출을 내부로 넣는 게 낫습니다.
+
+---
+
+응 그리고 @../_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md 에 기록해줘
