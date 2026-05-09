@@ -26,12 +26,14 @@ def get_repo(
     return SQLiteRepository(session)
 
 
+SettingsDepend = Annotated[Settings, Depends(get_settings)]
+
+
 def get_llm(settings: SettingsDepend) -> LLMProvider:
     return AnthropicLLM(settings)
 
 
 RepoDepend = Annotated[SQLiteRepository, Depends(get_repo)]
-SettingsDepend = Annotated[Settings, Depends(get_settings)]
 LLMDepend = Annotated[LLMProvider, Depends(get_llm)]
 
 
