@@ -353,77 +353,87 @@ Three kinds of models. Do not confuse them.
 
 **Never return a domain model directly from a mutating endpoint.** Returning `PlanStep` (which includes `patches: []`) from `POST /plan` falsely implies the plan step owns patching — a structural lie in the API contract.
 
-File: `src/models.py`
+Files: `src/models.py` + `src/schemas.py`
 
 ```python
-from uuid import uuid4, UUID
-from datetime import datetime, timezone
+# ── src/models.py — 도메인 모델만 ────────────────────────────────────────────
+from uuid import UUID
+from datetime import datetime
 from typing import Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 Brand = Literal["efood", "glovo", "talabat"]
 Severity = Literal["BLOCK", "WARN", "INFO"]
 CheckResult = Literal["pass", "fail"]
 
-
-# ── LLM Input Schemas ─────────────────────────────────────────────────────────
-
-class PlanStepInput(BaseModel):
-    description: str
-    target_files: list[str]
-
-class PatchProposalInput(BaseModel):
-    diff: str
-
-
-# ── Response Schemas (Out) ────────────────────────────────────────────────────
-
-class PlanStepOut(BaseModel):
-    """POST /plan response — no patches (Response Shape = Workflow Signal)."""
-    id: UUID
-    description: str
-    target_files: list[str]
-
-class PatchProposalOut(BaseModel):
-    """POST /patches response — no checks (SRP: patch ≠ check)."""
-    id: UUID
-    planStepId: UUID
-    diff: str
-    created_at: datetime
-
-
-# ── Domain Models ─────────────────────────────────────────────────────────────
-
 class GuardrailCheck(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     ruleId: str
     severity: Severity
     result: CheckResult
     reason: str                     # must cite specific rule: "per AGENTS.md R4"
 
 class PatchProposal(BaseModel):
-    id: UUID = Field(default_factory=uuid4)
-    planStepId: UUID
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
+    step_id: UUID
+    brand: Brand
     diff: str
-    checks: list[GuardrailCheck] = []
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    checks: list[GuardrailCheck] = Field(default_factory=list)
+    created_at: datetime
 
 class PlanStep(BaseModel):
-    id: UUID = Field(default_factory=uuid4)
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
     description: str
     target_files: list[str]
-    patches: list[PatchProposal] = []
+    patches: list[PatchProposal] = Field(default_factory=list)
 
 class Session(BaseModel):
-    id: UUID = Field(default_factory=uuid4)
+    model_config = ConfigDict(from_attributes=True)
+    id: UUID
     title: str
     description: str
     brand: Brand
-    trace_id: UUID = Field(default_factory=uuid4)   # OTEL hook
-    steps: list[PlanStep] = []
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    trace_id: UUID                  # OTEL hook
+    owner_id: str = ""
+    steps: list[PlanStep] = Field(default_factory=list)
+    created_at: datetime
+
+
+# ── src/schemas.py — DTOs (요청/LLM/응답) ────────────────────────────────────
+from src.models import Brand
+
+class SessionCreate(BaseModel):    # request DTO
+    title: str
+    description: str
+    brand: Brand
+
+class PatchCreate(BaseModel):      # request DTO
+    step_id: UUID
+
+class PlanStepInput(BaseModel):    # LLM input DTO
+    description: str
+    target_files: list[str]
+
+class PatchProposalInput(BaseModel):# LLM input DTO
+    diff: str
+
+class PlanStepOut(BaseModel):      # response DTO — no patches
+    id: UUID
+    description: str
+    target_files: list[str]
+
+class PatchProposalOut(BaseModel): # response DTO — no checks
+    id: UUID
+    step_id: UUID
+    diff: str
+    created_at: datetime
 ```
 
-**Success gate**: `uv run python -c "from src.models import Session, PlanStep, PatchProposal, GuardrailCheck, PlanStepInput, PatchProposalInput, PlanStepOut, PatchProposalOut"` exits 0.
+**Import rule**: `src/schemas.py`는 `src/models.py`에서 import 가능. 반대 방향(`src/models.py` → `src/schemas.py`)은 금지.
+
+**Success gate**: `uv run python -c "from src.models import Session, PlanStep, PatchProposal, GuardrailCheck; from src.schemas import PlanStepInput, PatchProposalInput, PlanStepOut, PatchProposalOut"` exits 0.
 
 **Design principle check**:
 - `PlanStepInput` / `PatchProposalInput` exist and are separate from domain models (SRP) ✓
@@ -795,8 +805,8 @@ print('curl -s -X POST localhost:8000/sessions -H \"Content-Type: application/js
 |---|---|
 | SRP — POST /plan response has no `patches` field | `curl .../plan \| python3 -c "import json,sys; d=json.load(sys.stdin); assert 'patches' not in d[0]"` |
 | SRP — POST /patches response has no `checks` field | Same pattern: `assert 'checks' not in d` |
-| SRP — LLM input schemas exist and are separate | `grep -n "PlanStepInput\|PatchProposalInput" src/models.py` shows two classes |
-| SRP — Response schemas (Out) exist and are separate | `grep -n "PlanStepOut\|PatchProposalOut" src/models.py` shows two classes |
+| SRP — LLM input schemas exist and are separate | `grep -n "PlanStepInput\|PatchProposalInput" src/schemas.py` shows two classes |
+| SRP — Response schemas (Out) exist and are separate | `grep -n "PlanStepOut\|PatchProposalOut" src/schemas.py` shows two classes |
 | Deterministic Boundary — no LLM call in guardrails.py | `grep -n "anthropic\|client\." src/guardrails.py` returns nothing |
 | YAGNI — no unspecified features | No SQLite, no auth, no retry loop unless spec asked |
 | Workflow-first — GET /sessions/{id} shows accumulated state | Full nested state only after all endpoints called in sequence |
@@ -1034,16 +1044,353 @@ over assignment scope.
 
 ```
 src/
-  models.py      ← Phase 1 (hand-written schemas)
-  store.py       ← Phase 3 Agent A (in-memory dict)
-  llm.py         ← Phase 3 Agent A (just-in-time AGENTS.md + Anthropic call)
-  routes.py      ← Phase 3 Agent A (5 FastAPI routes)
-  guardrails.py  ← Phase 3 Agent B (regex R1–R5, brand-parametrized)
-  main.py        ← Phase 3 Agent A (app factory + /health)
+  models.py           ← 도메인 모델 (Session, PlanStep, PatchProposal, GuardrailCheck)
+  schemas.py          ← DTOs: 요청(SessionCreate, PatchCreate), LLM I/O(PlanStepInput, PatchProposalInput), 응답(PlanStepOut, PatchProposalOut)
+  repository.py       ← SessionRepository(Protocol) — 인터페이스 선언만
+  sqlite_repository.py← SQLiteRepository — SQLAlchemy async 구현체
+  store.py            ← Phase 3 Agent A (in-memory dict, 초기 구현용)
+  llm.py              ← Phase 3 Agent A (just-in-time AGENTS.md + Anthropic call)
+  routes.py           ← Phase 3 Agent A (5 FastAPI routes)
+  guardrails.py       ← Phase 3 Agent B (regex R1–R5, brand-parametrized)
+  auth.py             ← 인증: get_current_actor, ActorDepend (DB 없음)
+  guards.py           ← 인가: get_owned_session, verify_patch_ownership (repo 필요)
+  deps.py             ← 인프라: get_repo, get_llm, get_settings, IdempotencyContext
+  errors.py           ← 도메인 예외 타입 (NotFoundError, OwnershipError) — raise 위치와 분리
+  exceptions.py       ← app-level exception handlers (not_found, ownership, llm_unavailable)
+  config.py           ← pydantic-settings BaseSettings (AliasChoices 없이 plain 필드)
+  main.py             ← Phase 3 Agent A (app factory + /health; registers handlers via add_exception_handler)
 tests/
+  memory_repository.py← InMemoryRepository — 테스트 전용 (배포 안 되므로 src/ 아님)
+  conftest.py         ← DI override: get_repo→InMemoryRepository, get_llm→FakeLLM
   test_guardrails.py  ← Phase 3 Agent B (6 test cases)
+  test_e2e.py         ← E2E (TestClient 기반, 실서버 불필요)
 {brand}/
   AGENTS.md      ← provided; loaded just-in-time (path: f"{brand}/AGENTS.md")
 README.md        ← Phase 1 skeleton, Phase 5 filled
 .env.example     ← ANTHROPIC_API_KEY=  (empty = mock mode)
+```
+
+### Auth / Authorization / Infrastructure — Three-File Split
+
+인증(Authentication)과 인가(Authorization)는 다른 책임이다. 파일로 분리한다.
+
+| 파일 | 책임 | DB 필요 |
+|---|---|---|
+| `auth.py` | 인증 — 토큰에서 actor 추출 | 없음 |
+| `guards.py` | 인가 — actor가 리소스에 접근할 수 있는지 확인 | 있음 (repo 필요) |
+| `deps.py` | 인프라 — repo, llm, settings, idempotency | — |
+
+**Smell check**: `auth.py`가 `repo`를 import하면 인증 파일이 인프라에 결합된 것 → 인가 로직을 `guards.py`로 분리해야 한다.
+
+```
+auth.py   — get_current_actor, ActorDepend          (DB 없음, 상태 없음)
+guards.py — get_owned_session, verify_patch_ownership (repo 필요, structlog bind 포함)
+deps.py   — get_repo, get_llm, get_settings, get_idempotency, IdempotencyContext
+```
+
+**`src/auth.py`** — 인증만:
+```python
+from typing import Annotated
+from fastapi import Depends, HTTPException, Security
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+_bearer = HTTPBearer(auto_error=False)
+
+async def get_current_actor(credentials: ... | None = Security(_bearer)) -> str:
+    if credentials is None or not credentials.credentials:
+        raise HTTPException(status_code=403, detail="Missing or invalid bearer token")
+    return credentials.credentials
+
+ActorDepend = Annotated[str, Depends(get_current_actor)]
+```
+
+**`src/guards.py`** — 인가만:
+```python
+from src.auth import ActorDepend
+from src.deps import RepoDepend
+from src.errors import NotFoundError, OwnershipError
+
+async def get_owned_session(session_id: UUID, repo: RepoDepend, actor: ActorDepend) -> Session:
+    session = await repo.get_session(session_id)
+    if session is None:
+        raise NotFoundError("session not found")
+    if session.owner_id != actor:
+        raise OwnershipError("session does not belong to actor")
+    structlog.contextvars.bind_contextvars(actor=actor, session_id=str(session.id), trace_id=str(session.trace_id))
+    return session
+
+OwnedSessionDepend = Annotated[Session, Depends(get_owned_session)]
+
+async def verify_patch_ownership(patch_id: UUID, repo: RepoDepend, actor: ActorDepend) -> None:
+    owner = await repo.get_patch_owner(patch_id)
+    if owner is None:
+        raise NotFoundError("patch not found")
+    if owner != actor:
+        raise OwnershipError("session does not belong to actor")
+```
+
+**`src/deps.py`** — 인프라만:
+```python
+# get_repo, get_llm, get_settings — DB/LLM/설정 공급
+# IdempotencyContext, get_idempotency — 멱등성 캐시 조회
+# auth, guards import 없음
+```
+
+---
+
+### Service Layer SRP — Cross-Cutting Concerns Belong in Guards/Routes
+
+Service functions must contain **only business logic**. Ownership checks, idempotency, audit logging, and log context binding are cross-cutting concerns — move them out.
+
+**Rule:** if a service function parameter is named `actor`, `idempotency_key`, or contains an inline idempotency check block, it is violating SRP.
+
+| Concern | Where it lives | How |
+|---|---|---|
+| Session 404 + ownership + log bind | `guards.get_owned_session` | raises `NotFoundError` / `OwnershipError` |
+| Idempotency cache read | `deps.get_idempotency` | returns `IdempotencyContext(key, cached)` |
+| Idempotency cache write | route handler | after service call, before return |
+| Audit log | route handler | `repo.log_audit(...)` after service call |
+| Patch ownership (shortcut route) | `guards.verify_patch_ownership` | raises on mismatch |
+
+**Target service signature (pure business logic):**
+
+```python
+# service.py — no actor, no idempotency_key, no audit, no log bind
+async def create_plan(
+    session: Session,           # resolved + ownership-verified by guard
+    repo: SessionRepository,
+    llm_client: LLMProvider,
+    settings: Settings,
+) -> list[PlanStepOut]:
+    step_inputs = await llm_client.create_plan(
+        session.title, session.description, session.brand, settings
+    )
+    steps = [_to_plan_step(step) for step in step_inputs]
+    await repo.save_steps(session.id, steps)
+    return [PlanStepOut.model_validate(step) for step in steps]
+```
+
+**Route handler pattern:**
+
+```python
+@router.post("/sessions/{session_id}/plan", response_model=list[PlanStepOut])
+async def create_plan(
+    session: OwnedSessionDepend,   # guards.py — ownership + log bind
+    repo: RepoDepend,
+    llm_client: LLMDepend,
+    settings: SettingsDepend,
+    idem: IdemDepend,              # deps.py — idempotency cache read
+) -> list[PlanStepOut]:
+    if idem.cached is not None:
+        return [PlanStepOut.model_validate(item) for item in json.loads(idem.cached)]
+
+    result = await service.create_plan(session, repo, llm_client, settings)
+
+    await repo.log_audit(trace_id=session.trace_id, actor=session.owner_id, action="create_plan", ...)
+    if idem.key:
+        await repo.set_idempotency(idem.key, json.dumps([r.model_dump(mode="json") for r in result]))
+    return result
+
+@router.get("/sessions/{session_id}", response_model=Session)
+async def get_session(session: OwnedSessionDepend) -> Session:
+    return session  # guard already resolved + verified — no service call needed
+```
+
+---
+
+### Refactoring Safety Checklist — Run After Every Move
+
+리팩터링 후 아래 세 grep을 실행한다. 어느 하나라도 결과가 나오면 dead code 또는 잘못된 위치.
+
+```bash
+# 1. 정의만 있고 raise 없는 예외 타입 — errors.py 외 파일에서 class XXXError가 있는데 raise 안 하면 dead
+grep -rn "^class.*Error" src/ --include="*.py"
+# 위 결과에서 각 클래스를 grep해서 raise가 같은 파일에 있는지 확인
+# errors.py에 있으면 OK (전용 파일) — 다른 파일에 있으면 왜 거기 있는지 설명할 수 있어야 함
+
+# 2. 이동된 파일의 출처 파일에 남은 import 잔재
+# 예: guards.py로 옮긴 후 service.py가 OwnershipError를 여전히 정의하고 있지 않은지
+grep -n "class NotFoundError\|class OwnershipError" src/service.py
+# 결과 없어야 정상 (errors.py로 이동했으므로)
+
+# 3. 예외 타입 import가 errors.py가 아닌 다른 src 파일을 가리키는지
+grep -rn "from src\.service import.*Error\|from src\.guards import.*Error" src/ --include="*.py"
+# 결과 없어야 정상 — 예외 타입은 항상 src.errors에서 import
+```
+
+**예방 원칙:**
+
+- **예외 타입은 raise하는 곳이 아니라 `errors.py`에 정의한다.** raise 위치가 바뀌어도 정의 파일은 움직이지 않아도 된다.
+- **리팩터링 후 출처 파일을 grep한다.** "움직인 것"만 보지 말고 "남겨진 것"을 확인한다.
+- **코드 리뷰 Dead Code 섹션은 당일 처리한다.** defer하면 쌓인다.
+- **필수 파라미터에 방어적 기본값을 두지 않는다.** `actor: str = ""`처럼 "혹시 몰라서" 넣는 기본값은 거짓 시그니처다 — auth가 항상 강제한다면 기본값은 절대 사용되지 않고, 사용되더라도 소유권 없는 세션이 만들어진다. 파라미터가 실제로 선택적이지 않으면 기본값 없이 필수로 선언한다.
+
+---
+
+### Exception Handler Convention
+
+Split exception handlers out of `main.py` into `src/exceptions.py`.
+Register them in `main.py` via `app.add_exception_handler(ExcType, handler_fn)` — not `@app.exception_handler` decorator, so the handler file stays importable without the app instance.
+
+```python
+# src/exceptions.py
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from src.llm import LLMUnavailableError
+from src.errors import NotFoundError, OwnershipError
+
+async def not_found_handler(request: Request, exc: NotFoundError) -> JSONResponse:
+    return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+async def ownership_handler(request: Request, exc: OwnershipError) -> JSONResponse:
+    return JSONResponse(status_code=403, content={"detail": str(exc)})
+
+async def llm_unavailable_handler(request: Request, exc: LLMUnavailableError) -> JSONResponse:
+    return JSONResponse(status_code=503, content={"detail": str(exc)})
+
+# src/main.py — registration (no decorator needed)
+from src.exceptions import llm_unavailable_handler, not_found_handler, ownership_handler
+app.add_exception_handler(NotFoundError, not_found_handler)
+app.add_exception_handler(OwnershipError, ownership_handler)
+app.add_exception_handler(LLMUnavailableError, llm_unavailable_handler)
+```
+
+---
+
+### DTO vs Domain Model — Separate Files
+
+DTOs and domain models serve different masters and change at different rates. Keep them in separate files.
+
+| File | Contents | Changes when |
+|---|---|---|
+| `src/models.py` | Domain models: `Session`, `PlanStep`, `PatchProposal`, `GuardrailCheck` | Business rules change |
+| `src/schemas.py` | DTOs: request (`SessionCreate`, `PatchCreate`), LLM I/O (`PlanStepInput`, `PatchProposalInput`), response (`PlanStepOut`, `PatchProposalOut`) | API contracts or LLM prompts change |
+
+```python
+# src/models.py — business concepts only
+class Session(BaseModel): ...
+class PlanStep(BaseModel): ...
+
+# src/schemas.py — transport shapes only
+from src.models import Brand
+class SessionCreate(BaseModel): ...      # request DTO
+class PlanStepInput(BaseModel): ...      # LLM input DTO
+class PlanStepOut(BaseModel): ...        # response DTO
+```
+
+**Import rule:** `src/schemas.py` may import from `src/models.py` (e.g. `Brand` literal). `src/models.py` must never import from `src/schemas.py`.
+
+---
+
+### Repository Pattern — Protocol + Implementations
+
+Split the repository into protocol (interface) and implementation(s):
+
+| File | Purpose |
+|---|---|
+| `src/repository.py` | `SessionRepository(Protocol)` — interface contract only |
+| `src/sqlite_repository.py` | `SQLiteRepository` — SQLAlchemy async implementation |
+| `tests/memory_repository.py` | `InMemoryRepository` — in-memory implementation for tests |
+
+The test implementation lives in `tests/` (not `src/`) because it is never deployed. The protocol lives in `src/` because routes and services type-hint against it.
+
+```python
+# src/deps.py
+from src.sqlite_repository import SQLiteRepository  # not from src.repository
+def get_repo(session: ...) -> SQLiteRepository: ...
+
+# tests/conftest.py
+from tests.memory_repository import InMemoryRepository
+_repo = InMemoryRepository()
+app.dependency_overrides[get_repo] = lambda: _repo
+```
+
+---
+
+### LLM Tool Schema Naming
+
+Internal tool schema dicts are module-private — prefix with `_`:
+
+```python
+# src/llm.py
+_PLAN_TOOL_SCHEMA = {"name": "output", ...}   # not PLAN_TOOL
+_PATCH_TOOL_SCHEMA = {"name": "output", ...}  # not PATCH_TOOL
+```
+
+This signals that callers outside the module should use `LLMProvider` / `AnthropicLLM`, not the raw schema dicts.
+
+---
+
+### LLM Client — Settings Injection + Narrow Exception
+
+`AnthropicLLM`은 제대로 된 client 클래스로 만든다. module-level 함수로 위임만 하는 구조는 클래스를 만든 의미가 없다.
+
+**핵심 3가지:**
+
+1. **`settings`를 생성자에 주입** — method 파라미터로 매번 넘기지 않는다
+2. **`except anthropic.APIError`로 좁힌다** — `except Exception`은 코드 버그도 503으로 숨김
+3. **Protocol에서 `settings` 제거** — provider가 이미 settings를 알고 있으므로 caller가 넘길 필요 없음
+
+```python
+# Wrong — settings를 매번 넘김, except Exception이 너무 넓음
+class AnthropicLLM:
+    async def create_plan(self, title, description, brand, settings): ...
+
+try:
+    result = await _call_tool_with_retry(tool, prompt, settings)
+except Exception as exc:          # 버그도 503으로 숨겨짐
+    raise LLMUnavailableError(...)
+
+# Correct — settings 주입, APIError만 잡음
+class AnthropicLLM:
+    def __init__(self, settings: Settings) -> None:
+        self._settings = settings
+
+    async def create_plan(self, title: str, description: str, brand: Brand) -> list[PlanStepInput]:
+        ...
+        try:
+            result, _ = await self._call_tool_with_retry(tool, prompt)
+        except anthropic.APIError as exc:    # Anthropic 장애만 번역
+            raise LLMUnavailableError("LLM unavailable") from exc
+
+class LLMProvider(Protocol):
+    async def create_plan(self, title: str, description: str, brand: Brand) -> list[PlanStepInput]: ...
+    async def create_patch(self, step: PlanStepInput, brand: Brand) -> PatchProposalInput: ...
+```
+
+**`deps.py`** — settings를 생성자에 주입:
+```python
+def get_llm(settings: SettingsDepend) -> LLMProvider:
+    return AnthropicLLM(settings)  # settings는 여기서 한 번만 넘김
+```
+
+**결과**: service/routes에서 `settings`를 llm_client에 넘기는 코드가 사라짐. service 시그니처가 더 단순해짐.
+
+```python
+# Before
+async def create_plan(session, repo, llm_client, settings) -> list[PlanStepOut]:
+    await llm_client.create_plan(title, description, brand, settings)
+
+# After
+async def create_plan(session, repo, llm_client) -> list[PlanStepOut]:
+    await llm_client.create_plan(title, description, brand)
+```
+
+**`LLMUnavailableError`는 유지한다** — 외부 library 예외(`anthropic.APIError`)를 앱 도메인 예외로 번역하는 역할. 이 번역 계층이 없으면 Anthropic SDK가 service/routes 전체에 누출된다.
+
+---
+
+### pydantic-settings — No AliasChoices
+
+`pydantic-settings` auto-maps `field_name` → `FIELD_NAME` env var. `AliasChoices` is unnecessary unless two different env var names must map to the same field.
+
+```python
+# Wrong — redundant
+anthropic_api_key: str = Field(
+    default="",
+    validation_alias=AliasChoices("ANTHROPIC_API_KEY", "anthropic_api_key"),
+)
+
+# Correct — pydantic-settings handles UPPER_CASE automatically
+anthropic_api_key: str = ""
 ```
