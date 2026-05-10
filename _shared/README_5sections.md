@@ -64,6 +64,17 @@
 [Severity or status ladder if applicable]: `[HIGH]` > `[MED]` > `[LOW]`.
 [One sentence on what the output feeds downstream — KPI, dashboard, metric.]
 
+**Trust Boundaries**:
+
+| Boundary | AI role | Deterministic code role |
+|---|---|---|
+| [core LLM action — e.g. Planning] | [what LLM produces] | [what service validates/enforces] |
+| [second LLM action — e.g. Patch proposal] | [what LLM produces] | [how output is stored/constrained] |
+| [guardrail / policy enforcement] | No authority | [what runs deterministically] |
+| [readiness / merge gate] | No authority | [how verdict is computed] |
+| [HTTP request / auth] | — | [validation and ownership checks] |
+| [external config / rules] | — | [how rules are loaded and re-read] |
+
 ---
 
 ## 3. Key Design Decisions

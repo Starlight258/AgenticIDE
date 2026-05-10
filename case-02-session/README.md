@@ -53,25 +53,18 @@ StepReadiness is computed, not stored
 - `GuardrailCheck`: deterministic result for one rule, including `ruleId`, `severity`, `result`, and `reason`.
 - `TestRun`: reviewer or CI evidence for one or more patch IDs.
 
-Trust boundaries:
+## Trust Boundaries
 
-| Boundary | Trusted input | Untrusted input | Service behavior |
-|---|---|---|---|
-| HTTP request | Auth actor header/token shape | User-provided IDs and payloads | FastAPI/Pydantic validation plus ownership checks |
-| LLM output | Tool schema name and expected shape | All generated plan text and diffs | Parse with Pydantic DTOs before storage |
-| Brand rules | `glovo/AGENTS.md` in repo | LLM claims about rule compliance | Re-read AGENTS.md and run regex checks in `guardrails.py` |
-| Readiness | Stored patch checks | LLM or user saying tests passed | Compute from latest patch and stored check results |
-| Tests | `TestRun.outcome` as reported evidence | Claim that it proves merge safety | Store as evidence, not as a readiness override |
-
-## AI Leverage
-
-| Area | AI does | Deterministic code does |
+| Boundary | AI role | Deterministic code role |
 |---|---|---|
-| Planning | Splits title and description into steps | Loads session/brand context and validates `PlanStepInput` |
-| Patch proposal | Produces a unified diff for one step | Stores proposal as a candidate, not an applied change |
-| Guardrails | No authority | Runs G1-G5 regex checks and reads severities from AGENTS.md |
+| Planning | Splits title and description into steps | Loads session/brand context, validates `PlanStepInput`, enforces idempotency |
+| Patch proposal | Produces a unified diff for one step | Stores proposal as a candidate; never applies it to the repo |
+| Guardrails | No authority | Runs G1-G5 regex checks and reads severities from `glovo/AGENTS.md` |
 | Readiness | No authority | Uses latest patch by `created_at`, stored checks, and BLOCK count |
-| Test evidence | No authority | Stores reviewer or CI `TestRun` records |
+| Test evidence | No authority | Stores reviewer or CI `TestRun` records as evidence, not as a readiness override |
+| HTTP request | — | FastAPI/Pydantic validation plus ownership checks on all IDs |
+| LLM output | Produces plan and diff text | Parsed with Pydantic DTOs before storage; raw text never trusted |
+| Brand rules | — | Re-reads `glovo/AGENTS.md` at check time; ignores LLM claims about compliance |
 | Mock mode | Returns deterministic sample plan and diff when no API key exists | Keeps quickstart and tests runnable without `.env` |
 
 ## Trade-offs
