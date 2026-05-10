@@ -785,6 +785,32 @@ curl -s localhost:8000/sessions/$SESSION | python3 -m json.tool
 
 ---
 
+## Phase 4.5 — Spec Alignment (1:25 – 1:27)
+
+Open the original assignment email/doc side-by-side with the README. Verify **every README claim against the spec**, not against a prior draft or earlier brainstorm.
+
+**Why this exists**: README often gets written from an earlier draft or sample prompt (e.g., Coco's P-CASE-FULL generated rules, or an earlier sketch of the spec). When the actual assignment uses different rule names, severity labels, or entity names, the README and the code drift apart silently. Reviewers catch this in 30 seconds and read it as "candidate did not re-read the spec."
+
+**Checklist** — every item below must match the spec exactly:
+
+- **Rule names** (G1–G5, R1–R5, etc.) — same identifier *and* same description as the spec's `AGENTS.md` or rule list
+- **Entity names** (Session, PlanStep, PatchProposal, etc.) — same names; if the spec uses different wording, README must use spec's words
+- **Endpoint paths** — every `POST /sessions/...` in README matches the spec's listed endpoint character-for-character
+- **Severity labels** — `BLOCK` / `WARN` / `INFO` (or whatever the spec uses) — README labels match the spec's labels
+- **Field names** — `brand`, `trace_id`, `severity`, `result`, `reason` — README uses spec's field names, not synonyms
+- **Sample diff expectations** — README's "expected to fail R4 and R5" must match the spec's "we expect at least R4 and R5 to flag"
+
+**How to run**:
+1. Open the original assignment doc (email, PDF, markdown).
+2. Open the README side-by-side.
+3. Read top-to-bottom. Every time README mentions a name/path/label, check it against the spec.
+4. Any mismatch → fix README to match spec (or fix code if spec is right and code is wrong).
+5. If the spec itself has a contradiction (e.g., sample diff says "passes R1" but R1 description says it should fail), document the contradiction in README's Assumptions and pick one interpretation.
+
+**Pass criteria**: zero unexplained mismatches between README and spec.
+
+---
+
 ## Phase 5 — README Finalize + JD Alignment (1:25 – 1:30)
 
 Fill every blank in the skeleton. Then run the JD alignment check below.
