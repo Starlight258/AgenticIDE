@@ -1,212 +1,240 @@
-# [Case Title]
+# README Writing Rules
 
-> [One line: what this service does and for whom — "DH-aware X that does Y before Z"]
->
-> [Second line: what it is NOT — "It is not a clone of X — it is the layer that…"]
+Rules for writing take-home assignment READMEs. Template is below.
 
 ---
 
-## 1. Problem & Approach
+## Rules Before You Write
 
-**What this replaces**: [the manual workflow this service eliminates — start with developer pain]
+### Remove AI smell
 
-**Architecture**:
+1. **No coined terms**: if you can't defend the word in an interview, don't use it. Use verbs instead. ❌ "deterministic sandwich" → ✅ "the LLM is wrapped on both sides by deterministic code"
+2. **No lists longer than 3 items in a sentence**: listing 7 things is an AI pattern. Stop at 3; move the rest to a table or delete if already covered by a diagram.
+3. **No hedge language**: replace vague softeners with direct verbs. ❌ "instead of silently pretending a new check was created" → ✅ "instead of returning a fake new check"
+4. **Introduce jargon once, then use the abbreviation**: define it on first use, either inline or as a note. After that, use the short form freely. ❌ "checks the stored version before saving; if another request changed it first, returns 409" → ✅ "CAS (Compare-And-Swap) on `version`; if another request changed it first, returns 409" — then use "CAS" freely after that. Dropping jargon entirely can make things *more* confusing, not less.
+5. **No awkward translations**: write naturally. ❌ "`brand="glovo"` is the evaluated path" → ✅ "currently implemented for `brand="glovo"`"
 
-```
-[Request]
-    │
-    ▼
-[POST /X]
-  [deterministic input setup]                  ← deterministic
+### Cut duplication
 
-[POST /X/{id}/Y]
-  [context loaded just-in-time]                ← deterministic
-  → LLM([model]): [what LLM does]             ← non-deterministic, schema-constrained
-  → [output validation]                        ← deterministic
+6. **Never repeat what a diagram already shows**: if it's in the diagram, don't restate it in prose below.
+7. **No "Implementation Signals" section**: reviewers read the code. Don't list files and say "look here" — that's not a README section.
+8. **Table rows and subsections must not say the same thing twice**: if a decision is in the Other decisions table, don't also give it a `###` subsection. Pick one.
 
-[POST /X/{id}/Z]
-  → [deterministic check]                      ← deterministic
-  → [gate decision]                            ← deterministic
+### Structure
 
-[GET /X/{id}]
-  → full state: [what's nested]
-```
+9. **Trust Boundaries: 5-6 rows max**: merge rows that repeat the same idea from different angles. Mock mode and dev tooling are not trust boundaries — leave them out.
+10. **Trust Boundaries AI role column: use "None" for everything AI doesn't control**: don't split into "None" vs "Not involved" — that distinction confuses readers. Use "None" uniformly.
+11. **No decision numbering**: name headings by what they decide. ❌ "### Decision 2: Readiness" → ✅ "### Readiness - which patch is the merge candidate?"
+12. **Significant decisions need an options table**: showing alternatives is what makes it a trade-off. A decision with no alternatives is just a statement.
+13. **Options table: options as rows, criteria as columns**: ❌ options as columns (table breaks when you add a third option) → ✅ options as rows with "How it works" and "Risk" as columns. Easier to scan and extend.
+14. **How to Run opener is one sentence**: credentials present vs absent, nothing more.
+15. **Show Swagger URL explicitly**: don't make the reader guess. Add `http://localhost:PORT/docs` after the run command.
+16. **Second line of the title says what it is NOT**: makes scope immediately clear. Use two sentences, not a dash. ❌ "Not a git apply - the safety check between..." → ✅ "Not a git apply or CI runner. The safety check between..."
+17. **No `:` after headings**: h2/h3 already signals a section. No `:` mid-sentence either (e.g. "it means:" → "it means one of three things").
+18. **No `—` dash**: use `-` instead.
 
-[One sentence: what the LLM does vs what deterministic code decides.]
+### Correctness - check before submitting
 
-**Assumptions**:
-1. [storage scope] — [swap path if requirement changes]
-2. [context source] — [who owns it, how it's loaded]
-3. [severity semantics] — [what BLOCK/WARN/INFO means for merge]
-4. [LLM output contract] — [how output is validated before storage]
-5. [brand/tenant scope] — [what's currently supported vs extension path]
-6. [observability] — [what trace_id / logging covers now]
-7. [mock mode] — [what happens without real credentials]
+19. **Every claim in README must match the actual assignment spec**: before finalizing, open the original assignment email/doc and verify each section against it line by line. README G1-G5 descriptions, entity names, endpoint paths, and severity labels must match what the spec and code actually say — not what you assumed or what a previous draft had. If you didn't write the code yourself, read the relevant files before writing about them.
 
-**Ambiguities I noticed**:
-1. [question 1 — what's unclear from the spec]
-2. [question 2]
-3. [question 3 — what you'd ask PM if you had more time]
+16. **Don't use SQLite as the "If More Time" target**: SQLite is a local convenience choice, not a production direction. Point to MySQL or PostgreSQL via docker-compose instead.
+17. **"Bearer demo" belongs in If More Time**: hardcoded tokens are a known gap — call it out and say what real auth would look like (JWT or API key validation).
+
+### Diagrams
+
+18. **Architecture diagrams must be Excalidraw or Mermaid**: no text diagrams (`->`, `|`, `+--+`). Ask Coco to draw it.
+    - Excalidraw: for freeform flow or component layout
+    - Mermaid: for flowcharts, sequence diagrams, or state diagrams
 
 ---
 
-## 2. Domain Model
+## Template
 
-- `[Entity1]` — [one-line purpose]
-- `[Entity2]` — [one-line purpose]
-- `[Entity3]` — [one-line purpose]
-- `[Entity4]` — [one-line purpose]
+### [Case Title]
 
-```
+[One line: what this service does and for whom.] Not a [X] - [what it actually is, in one clause].
+
+---
+
+#### 1. Problem & Approach
+
+**What this replaces**: [the manual workflow this eliminates - one sentence, start with developer pain]
+
+**API surface**
+
+- `POST /X` - [what it creates]
+- `POST /X/{id}/Y` - [what it triggers]
+- `GET /X/{id}` - [what it returns]
+
+**Architecture**
+
+[One sentence with verbs. e.g. "the LLM is wrapped on both sides by deterministic code; it only produces structured output, everything else is owned by the service"]
+
+[Ask Coco to draw this as a Mermaid flowchart or Excalidraw diagram - do not write a text diagram.]
+
+**Assumptions**
+
+1. [session/storage scope] - [swap path if requirement expands]
+2. [brand/tenant scope] - [what's implemented now vs extension path]
+3. [config source and location] - [where it lives and why, especially if non-standard]
+4. [LLM output contract] - [how output is constrained before storage]
+5. [severity semantics] - [what BLOCK/WARN means for the downstream gate]
+6. [observability] - [what trace_id / logging covers now]
+
+---
+
+#### 2. Domain Model
+
+```text
 [Entity1] 1—* [Entity2] 1—* [Entity3] 1—* [Entity4]
+[Entity1] 1—* [SideEntity]
+[ComputedThing] is computed, not stored
 ```
 
-[Severity or status ladder if applicable]: `[HIGH]` > `[MED]` > `[LOW]`.
-[One sentence on what the output feeds downstream — KPI, dashboard, metric.]
+- `[Entity1]` - [one-line purpose, key fields]
+- `[Entity2]` - [one-line purpose]
+- `[Entity3]` - [one-line purpose, note if immutable]
+- `[Entity4]` - [one-line purpose]
+- `[SideEntity]` - [evidence-only; does not override downstream verdict]
 
-**Trust Boundaries**:
+**Trust Boundaries** (5-6 rows max; merge similar rows; no mock mode row)
 
 | Boundary | AI role | Deterministic code role |
 |---|---|---|
-| [core LLM action — e.g. Planning] | [what LLM produces] | [what service validates/enforces] |
-| [second LLM action — e.g. Patch proposal] | [what LLM produces] | [how output is stored/constrained] |
-| [guardrail / policy enforcement] | No authority | [what runs deterministically] |
-| [readiness / merge gate] | No authority | [how verdict is computed] |
-| [HTTP request / auth] | — | [validation and ownership checks] |
-| [external config / rules] | — | [how rules are loaded and re-read] |
+| [core LLM action] | [what LLM produces] | [what service validates/enforces] |
+| [second LLM action] | [what LLM produces] | [how output is stored/constrained] |
+| [guardrail / policy] | None | [what runs deterministically; how severity is sourced] |
+| [readiness / gate] | None | [how verdict is computed; what blocks it] |
+| [test evidence / side input] | None | [stored as evidence only; does not override verdict] |
+| [HTTP / config / auth] | None | [validation, ownership checks, config re-read - merge into one row] |
 
 ---
 
-## 3. Key Design Decisions
+#### 3. Design Decisions
 
-The hardest part of this problem was [X]. I considered three options:
+[Significant decisions get a subsection with an options table.
+Name headings by what they decide, not by a number.
+Everything else goes in the Other decisions table.
+Never list more than 3 items in a sentence - use a table instead.]
 
-### [Core hard problem — e.g. concurrency control / guardrail enforcement / consistency]
+##### [Decision name - e.g. "Readiness - which patch is the merge candidate?"]
 
-**Option 1 — [name]**
-[one sentence on how it works]
-Risk: [what breaks under this approach]
+[One sentence on why this was non-obvious.]
 
-**Option 2 — [name]**
-[one sentence on how it works]
-Risk: [what breaks under this approach]
+| | How it works | Risk |
+|---|---|---|
+| Option A: [name] | [one sentence] | [what breaks] |
+| Option B: [name] | [one sentence] | [what breaks] |
 
-**Option 3 — [name]**
-[one sentence on how it works]
-Risk: [what breaks under this approach]
+**Decision: Option [N].** [One or two sentences - correctness argument. Name the assumption that makes the trade-off acceptable.]
 
-**I chose Option [N]** because [correctness / simplicity / scope fit].
-The trade-off is [X], which is acceptable because [Y].
-I would reconsider if [Z].
+[Any cascading rules or states that follow.]
 
-### [Second significant decision if applicable]
+##### [Second significant decision]
 
-[Same format — options considered, choice made, trade-off acknowledged]
+[Same format. Add a column if three options.]
 
----
+##### Other decisions
 
-## 4. Trade-offs & Decisions
-
-| Decision | Rationale | Reconsider if |
-|----------|-----------|---------------|
-| [storage choice] | [why — what it removes from critical path] | [when to swap] |
-| [deterministic vs LLM for X] | [why deterministic wins here] | [when LLM would be right] |
-| [scope cut] | [why this wasn't needed for spec] | [when to add it] |
-| [no auth] | [why out of scope] | [when staging/prod changes this] |
-| [SDK choice] | [why direct over framework] | [when to reconsider] |
-| [parallel worktrees] | [what was independent, what the benefit was] | [when branches diverge too much] |
+| Background | Options | Decision | Reason |
+|---|---|---|---|
+| [why this needed a decision] | [A vs B] | [chosen] | [one sentence] |
+| [why this needed a decision] | [A vs B] | [chosen] | [one sentence] |
 
 ---
 
-## 5. Edge Cases Considered
+#### 4. Error Model
 
-- [primary race condition — e.g. two requests hitting same resource simultaneously]
-- [same-user duplicate request — idempotency]
-- [boundary overflow — e.g. capacity going negative]
-- [cascade effect — deleting X while Y is in progress]
-- [constraint interaction — e.g. credit limit + concurrent enrollment]
-- [config change during active operation — e.g. capacity modified mid-session]
+[Path IDs use 404. Body IDs use 422. Duplicate event creation returns 409 with existing data in the body.]
 
-For [most critical case]: [one sentence on how the implementation handles it, or why it's explicitly out of scope with documented assumption].
+| Case | Status | Error |
+|---|---:|---|
+| Missing [resource] path ID | 404 | `[resource]_not_found` |
+| [Cross-session ownership violation in path] | 404 | `[resource]_not_found` |
+| Body references unknown [resource] | 422 | `[resource]_not_found_in_payload` |
+| Body references another session's [resource] | 422 | `[resource]_not_in_session` |
+| Duplicate event creation | 409 | `[event]_already_exist` |
+| Optimistic lock race | 409 | `version_conflict` |
 
 ---
 
-## 6. AI Usage Log
+#### 5. AI Usage Log
 
 I used AI as a reasoning partner, not only as a code generator.
 
 Example prompts I used during design:
-- "[question about failure modes — e.g. What race conditions can happen in X?]"
-- "[question that challenged my initial approach — e.g. Is Y-level locking enough if Z?]"
-- "[comparison prompt — e.g. Compare approach A and B for high-contention X]"
-- "[review prompt — e.g. Review my design for missing consistency issues]"
+- "[question about failure modes]"
+- "[question that challenged my initial approach]"
+- "[comparison prompt - compare approach A vs B for X]"
 
-Every AI-generated file went through: `ruff check` → `uv run pytest` → manual diff scan.
+Every AI-generated file went through: `ruff check` -> `uv run pytest` -> manual diff scan.
 No AI output was committed without a test covering the specific behavior.
-
-The final decisions were reviewed and adjusted by me before implementation.
-I made the final design choices by comparing correctness, complexity, and assignment scope.
 
 | Part | Verification |
 |------|--------------|
 | Domain models | Type-checked by Pydantic |
 | [File/component] | [how it was verified] |
-| [File/component] | [how it was verified] |
 | README | Cross-checked against route decorators, models, and tests |
 
 ---
 
-## 7. If More Time
+#### 6. If More Time
 
-- **[Feature 1]** → [one sentence on what it enables]
-- **[Feature 2]** → [one sentence]
-- **[Feature 3]** → [one sentence — show extension path is already designed in schema]
-- **[Observability]** → push `trace_id` spans to [monitoring system]; ties into [KPI]
-- **[Multi-tenant]** → `[field]` already in schema; add `[config file]` per tenant — no route changes needed
+[Say what each item enables, not just what it is.
+If the extension path is already in the schema, say so explicitly.]
+
+- **Real auth** -> replace hardcoded token with JWT or API key validation.
+- **MySQL / PostgreSQL** -> swap current DB for a real one via docker-compose; add migrations and indexes.
+- **[Feature]** -> [one sentence on what it enables]
+- **Multi-tenant** -> `[field]` already in schema; add `[config file]` per tenant - no route changes needed.
+- **Observability** -> push `trace_id` spans to [system]; ties into [downstream metric].
+- **Recompute** -> needed when [config source] changes; current design stores results as immutable audit events.
 
 ---
 
-## How to Run
+#### How to Run
+
+##### Setup
 
 ```bash
 uv sync
-cp .env.example .env          # set [API_KEY_VAR] (or leave blank for mock mode)
-uv run pytest                 # all tests green
-uv run uvicorn src.main:app --reload
-# → http://localhost:8000/docs
+uv run pytest
+uv run fastapi dev src/main.py
 ```
 
-Healthcheck:
+Swagger UI: http://localhost:PORT/docs
+
+##### Auth
+
+All requests require an `Authorization` header. Any bearer value is accepted — there is no real token validation in local dev.
+
 ```bash
-curl localhost:8000/health
-# {"status":"ok"}
+-H "Authorization: Bearer <any>"
 ```
 
-Full workflow:
+##### LLM
+
+[One sentence: what happens with vs without credentials.]
+
+##### [Workflow name]
 
 ```bash
-# 1. [first step]
+# 1. [create session/workspace]
 RESOURCE=$(curl -s -X POST localhost:8000/[endpoint] \
   -H "Content-Type: application/json" \
   -d '[payload]' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
 
-# 2. [second step]
+# 2. [generate plan/sub-resource]
 SUB=$(curl -s -X POST localhost:8000/[endpoint]/$RESOURCE/[sub] \
   | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['id'])")
 
-# 3. [key step — the one that demonstrates the core behavior]
-curl -s -X POST localhost:8000/[endpoint]/$RESOURCE/[check] \
+# 3. [core step - demonstrates the main feature]
+curl -s -X POST localhost:8000/[endpoint]/$RESOURCE/[action] \
   | python3 -m json.tool
 
-# 4. full state
+# 4. [readiness or full state]
 curl -s localhost:8000/[endpoint]/$RESOURCE | python3 -m json.tool
 ```
 
-## Tested Working
-
-- `GET /health` → `{"status": "ok"}`
-- `POST /[create]` → [what it returns]
-- `POST /[core action]` → [what it demonstrates — the main feature]
-- `POST /[check/guardrail]` → [what violations look like]
-- `GET /[full state]` → [nested structure confirmed]
+Expected: [what the output shows and why]
