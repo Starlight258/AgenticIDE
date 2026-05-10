@@ -65,13 +65,55 @@ def get_tools() -> list[ToolDefinition]:
     return list_tools()
 
 
-@router.post("/tools/{name}/invoke")
+@router.post("/tools/search_prs/invoke")
+def invoke_search_prs(
+    payload: SearchPrsArgs,
+    x_caller_brand: str = Header(alias="X-Caller-Brand"),
+) -> ToolInvokeResponse:
+    """Invoke PR search with an OpenAPI-visible request schema."""
+    return invoke_registered_tool("search_prs", dump_args(payload), x_caller_brand)
+
+
+@router.post("/tools/get_slack_messages/invoke")
+def invoke_get_slack_messages(
+    payload: GetSlackMessagesArgs,
+    x_caller_brand: str = Header(alias="X-Caller-Brand"),
+) -> ToolInvokeResponse:
+    """Invoke Slack message lookup with an OpenAPI-visible request schema."""
+    return invoke_registered_tool(
+        "get_slack_messages",
+        dump_args(payload),
+        x_caller_brand,
+    )
+
+
+@router.post("/tools/fetch_gdrive_doc/invoke")
+def invoke_fetch_gdrive_doc(
+    payload: FetchGdriveDocArgs,
+    x_caller_brand: str = Header(alias="X-Caller-Brand"),
+) -> ToolInvokeResponse:
+    """Invoke GDrive fetch with an OpenAPI-visible request schema."""
+    return invoke_registered_tool(
+        "fetch_gdrive_doc", dump_args(payload), x_caller_brand
+    )
+
+
+@router.post("/tools/{name}/invoke", include_in_schema=False)
 def invoke_tool(
     name: str,
     payload: dict[str, Any] = Body(...),
     x_caller_brand: str = Header(alias="X-Caller-Brand"),
 ) -> ToolInvokeResponse:
     """Validate, authorize, execute, and audit one tool call."""
+    return invoke_registered_tool(name, payload, x_caller_brand)
+
+
+def invoke_registered_tool(
+    name: str,
+    payload: dict[str, Any],
+    x_caller_brand: str,
+) -> ToolInvokeResponse:
+    """Validate, authorize, execute, and audit one registered tool call."""
     started_at = perf_counter()
     tool_call_id = uuid4()
     caller_brand = parse_caller_brand(x_caller_brand)
@@ -94,6 +136,11 @@ def invoke_tool(
         tool_call_id, caller_brand, name, payload, "success", started_at, None, summary
     )
     return ToolInvokeResponse(tool_call_id=tool_call_id, result=result)
+
+
+def dump_args(args: BaseModel) -> dict[str, Any]:
+    """Convert typed request args into JSON-compatible audit payload."""
+    return args.model_dump(mode="json")
 
 
 def parse_caller_brand(raw_brand: str) -> Brand:

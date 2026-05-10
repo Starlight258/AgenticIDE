@@ -32,6 +32,21 @@ def test_tools_catalog_uses_args_schema() -> None:
     assert "since" in tools["get_slack_messages"]["args_schema"]["required"]
 
 
+def test_openapi_shows_tool_specific_request_schemas() -> None:
+    """Swagger exposes concrete schemas for each invokable tool."""
+    client = TestClient(app)
+
+    response = client.get("/openapi.json")
+
+    assert response.status_code == 200
+    paths = response.json()["paths"]
+    assert "/tools/{name}/invoke" not in paths
+    schema = paths["/tools/search_prs/invoke"]["post"]["requestBody"]["content"][
+        "application/json"
+    ]["schema"]
+    assert schema == {"$ref": "#/components/schemas/SearchPrsArgs"}
+
+
 def test_denied_pr_search_is_audited() -> None:
     """Cross-brand PR search is denied and recorded."""
     audit_store.clear()
