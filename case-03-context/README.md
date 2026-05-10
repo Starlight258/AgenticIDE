@@ -12,7 +12,7 @@ This follows the Multi-brand Awareness rule in `AGENTS.md`. Every entity carries
 
 **API surface**
 
-- `GET /tools` - returns the tool catalog and Pydantic-derived argument schemas.
+- `GET /tools` - returns the tool catalog, Pydantic-derived argument schemas, and brand requirements.
 - `POST /tools/{name}/invoke` - validates args, checks permission, executes one mock tool, and writes one audit event.
 - `GET /audit` - returns invocation history, including successful and denied calls.
 
@@ -60,7 +60,7 @@ ToolInvocation is an audit event created for each validated invocation attempt
 AuditRecord is the external audit shape defined in models.py
 ```
 
-- `ToolDefinition` - catalog entry with `name`, `description`, and `args_schema`.
+- `ToolDefinition` - catalog entry with `name`, `description`, `args_schema`, and `brand_requirements`.
 - `SearchPrsArgs`, `GetSlackMessagesArgs`, `FetchGdriveDocArgs` - strict argument contracts with `extra="forbid"`.
 - `ToolInvokeResponse` - caller-facing result with `tool_call_id` and tool result.
 - `ToolInvocation` - stored event with caller brand, args, outcome, reason, summary, latency, and timestamp.
@@ -126,7 +126,7 @@ I used AI to split the work into two implementation tracks. One track handled to
 | Part | Verification |
 |---|---|
 | Tool catalog | `GET /tools` test checks schema titles derived from Pydantic |
-| Permission boundary | Route tests cover cross-brand PR denial and GDrive metadata ownership |
+| Permission boundary | Route tests cover cross-brand PR denial, Slack whitelist checks, and GDrive metadata ownership |
 | Audit store | Audit tests cover empty state, brand filter, limit, and newest-first ordering |
 | README | Cross-checked against `SPEC.md`, route decorators, models, permissions, and grep signals |
 
@@ -157,13 +157,25 @@ curl -s http://localhost:8000/tools | python3 -m json.tool
 curl -s -X POST http://localhost:8000/tools/search_prs/invoke \
   -H "Content-Type: application/json" \
   -H "X-Caller-Brand: efood" \
-  -d '{"brand":"efood","query":"checkout"}' \
+  -d '{"brand":"efood","query":"checkout","limit":5}' \
   | python3 -m json.tool
 
 curl -s -X POST http://localhost:8000/tools/search_prs/invoke \
   -H "Content-Type: application/json" \
   -H "X-Caller-Brand: efood" \
-  -d '{"brand":"glovo","query":"ETA"}' \
+  -d '{"brand":"glovo","query":"ETA","limit":5}' \
+  | python3 -m json.tool
+
+curl -s -X POST http://localhost:8000/tools/get_slack_messages/invoke \
+  -H "Content-Type: application/json" \
+  -H "X-Caller-Brand: efood" \
+  -d '{"brand":"efood","channel":"C-EFOOD-OPS","since":"2026-05-10T01:30:00+00:00"}' \
+  | python3 -m json.tool
+
+curl -s -X POST http://localhost:8000/tools/fetch_gdrive_doc/invoke \
+  -H "Content-Type: application/json" \
+  -H "X-Caller-Brand: efood" \
+  -d '{"brand":"efood","doc_id":"doc-efood-checkout"}' \
   | python3 -m json.tool
 
 curl -s http://localhost:8000/audit | python3 -m json.tool

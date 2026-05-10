@@ -81,8 +81,14 @@ ToolInvocation 필드:
 
 Schema 구조 (case-01의 3-tier를 이 assignment에 맞게 조정):
 - SearchPrsArgs / GetSlackMessagesArgs / FetchGdriveDocArgs — args 검증 + catalog schema 생성 모두 이 모델에서 파생
+- ToolDefinition — name, description, args_schema, brand_requirements를 포함. brand_requirements는 GET /tools에서 LLM client가 권한 조건을 알 수 있게 하는 필드
 - ToolInvokeResponse — tool_call_id + result (LLM에게 돌려주는 것)
 - AuditRecord — GET /audit 응답 (ToolInvocation과 동일 구조, 외부 노출용)
+
+assignment.md 원문 tool contract를 그대로 따른다:
+- search_prs args: query, brand, limit / result item: pr_id, title, author, status, brand
+- get_slack_messages args: channel, since, brand / result item: ts, author, text, channel, brand
+- fetch_gdrive_doc args: doc_id, brand / result: doc_id, title, content, brand, last_modified
 
 ---
 

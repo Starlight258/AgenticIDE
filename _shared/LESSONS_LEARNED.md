@@ -197,6 +197,16 @@ HTTP method, route/path, actor, request body fingerprint 같은 request scope를
 
 **다음에 할 것**: 모델 간 응답 변환은 `AuditRecord.model_validate(item.model_dump())`처럼 `model_dump()`를 거친다. 회귀 테스트나 curl로 `GET /audit`까지 확인한다.
 
+### Mistake 10 — 설계 SPEC가 assignment 원문 필드명을 덮어씀 (case-03-context)
+
+**무슨 일**: `search_prs.limit`, Slack `channel/since`, GDrive `brand/last_modified`, `/tools.brand_requirements`가 구현에서 빠지거나 다른 이름으로 바뀌었다.
+
+**왜 발생**: 구현이 `assignment.md`의 원문 contract보다 `SPEC.md`의 추상 설계 문장과 mock 편의 필드명을 더 따랐다.
+
+**핵심 원인**: 설계 기록이 원문 API contract를 체크리스트로 고정하지 않으면, 좋은 구조를 만들면서도 public schema가 drift된다.
+
+**다음에 할 것**: SPEC 작성 시 assignment 원문 endpoint, args, result field를 그대로 복사한 contract 표를 넣고, route test에서 required args와 반환 필드명을 검증한다.
+
 Agent A (routes + LLM) prompt에 반드시 포함할 것:
 
 ```
