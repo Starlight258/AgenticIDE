@@ -207,6 +207,7 @@ HTTP method, route/path, actor, request body fingerprint 같은 request scope를
 
 **다음에 할 것**: SPEC 작성 시 assignment 원문 endpoint, args, result field를 그대로 복사한 contract 표를 넣고, route test에서 required args와 반환 필드명을 검증한다.
 Swagger/OpenAPI도 public contract이므로 동적 `dict[str, Any]` 라우트만 두지 말고 tool별 request schema가 `/openapi.json`에 드러나는지 테스트한다.
+README의 에러 표도 public contract이므로 헤더 누락 같은 FastAPI 기본 422 경로를 직접 테스트해서 문서와 실제 status code를 맞춘다.
 
 Agent A (routes + LLM) prompt에 반드시 포함할 것:
 

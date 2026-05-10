@@ -44,7 +44,53 @@ def test_openapi_shows_tool_specific_request_schemas() -> None:
     schema = paths["/tools/search_prs/invoke"]["post"]["requestBody"]["content"][
         "application/json"
     ]["schema"]
+    headers = paths["/tools/search_prs/invoke"]["post"]["parameters"]
     assert schema == {"$ref": "#/components/schemas/SearchPrsArgs"}
+    caller_brand_header = next(
+        header for header in headers if header["name"] == "X-Caller-Brand"
+    )
+    assert caller_brand_header["in"] == "header"
+    assert caller_brand_header["required"] is True
+
+
+def test_missing_caller_brand_returns_readme_error_code() -> None:
+    """Missing caller identity follows the documented 400 error model."""
+    client = TestClient(app)
+
+    response = client.post(
+        "/tools/search_prs/invoke",
+        json={"brand": "efood", "query": "checkout", "limit": 5},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "invalid X-Caller-Brand"}
+
+
+def test_invalid_caller_brand_returns_readme_error_code() -> None:
+    """Unsupported caller identity follows the documented 400 error model."""
+    client = TestClient(app)
+
+    response = client.post(
+        "/tools/search_prs/invoke",
+        headers={"X-Caller-Brand": "wrong"},
+        json={"brand": "efood", "query": "checkout", "limit": 5},
+    )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "invalid X-Caller-Brand"}
+
+
+def test_body_schema_errors_still_return_422() -> None:
+    """Only caller-brand validation is remapped from 422 to 400."""
+    client = TestClient(app)
+
+    response = client.post(
+        "/tools/search_prs/invoke",
+        headers={"X-Caller-Brand": "efood"},
+        json={"brand": "efood"},
+    )
+
+    assert response.status_code == 422
 
 
 def test_denied_pr_search_is_audited() -> None:
@@ -80,6 +126,21 @@ def test_gdrive_permission_uses_doc_metadata_brand() -> None:
     assert result["title"] == "efood checkout rollout"
     assert result["brand"] == "efood"
     assert result["last_modified"] == "2026-05-10T01:00:00+00:00"
+
+
+def test_missing_gdrive_doc_is_permission_denied() -> None:
+    """Unknown doc ids do not disclose existence through 404."""
+    audit_store.clear()
+    client = TestClient(app)
+
+    response = client.post(
+        "/tools/fetch_gdrive_doc/invoke",
+        headers={"X-Caller-Brand": "efood"},
+        json={"brand": "efood", "doc_id": "missing-doc"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "document does not exist"}
 
 
 def test_search_prs_returns_spec_shape_and_applies_limit() -> None:

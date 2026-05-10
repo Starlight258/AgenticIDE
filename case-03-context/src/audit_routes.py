@@ -1,3 +1,5 @@
+"""HTTP routes for audit inspection."""
+
 from fastapi import APIRouter, Query
 
 from src.models import Brand, ToolInvocation

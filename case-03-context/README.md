@@ -15,6 +15,7 @@ This follows the Multi-brand Awareness rule in `AGENTS.md`. Every entity carries
 - `GET /tools` - returns the tool catalog, Pydantic-derived argument schemas, and brand requirements.
 - `POST /tools/{name}/invoke` - validates args, checks permission, executes one mock tool, and writes one audit event.
 - `GET /audit` - returns invocation history, including successful and denied calls.
+- `GET /audit?brand=efood&limit=20` - filters audit history by caller brand and limits the number of newest records returned.
 
 **Architecture**
 
@@ -51,6 +52,7 @@ flowchart TD
 4. Pydantic models are the single source for both catalog schema and invoke validation.
 5. Audit stores `result_summary`, not full Slack text or document content.
 6. Denied calls are audit events because reviewers need to see boundary probes.
+7. Slack `since` accepts timezone-free ISO 8601 input and treats it as UTC.
 
 ## 2. Domain Model
 
@@ -88,7 +90,7 @@ The target brand is not enough for every tool because each internal system uses 
 | Option B - use a tool-specific check | PR compares target brand, Slack checks a channel whitelist, GDrive checks document metadata | Slightly more code per tool | Yes |
 | Option C - trust mock data only | Backend returns whatever matches the args | Cross-brand reads become normal behavior | No |
 
-**Decision is Option B.** The service uses three explicit permission checks because PR, Slack, and GDrive expose ownership differently.
+**Decision is Option B.** The service uses three explicit permission checks because PR, Slack, and GDrive expose ownership differently. Missing GDrive documents intentionally return the same 403 permission-denied path instead of 404, because a distinct not-found response would let callers use `doc_id` probes as an existence oracle.
 
 ### Schema as contract
 
@@ -121,7 +123,11 @@ The catalog and invocation path must not drift.
 
 ## 5. AI Usage Log
 
-I used AI to split the work into two implementation tracks. One track handled tool catalog and invocation flow. The other handled audit store and audit route. The merge history keeps both branch names visible through `feat/tools-invoke` and `feat/audit-store`.
+I used AI to split the work into two implementation tracks. One prompt asked for a catalog and invocation flow with strict Pydantic args, tool-specific permission hooks, and deterministic mock backends. A second prompt asked for the audit store and `/audit` route with brand filtering, limit support, and newest-first ordering. The merge history keeps both branch names visible through `feat/tools-invoke` and `feat/audit-store`.
+
+AI also helped draft mock PR, Slack, and GDrive data that exercised each brand boundary. I treated that output as a candidate, then verified it against the assignment contract and route tests. Two corrections came from that review: GDrive authorization must check document metadata rather than trusting `args.brand`, and Swagger/OpenAPI must expose concrete tool request schemas rather than a generic `dict` payload.
+
+Verification used both pytest and curl-style contract checks. Pytest covers catalog schemas, schema failures, cross-brand denial, GDrive metadata ownership, Slack channel and `since` behavior, audit filters, audit limits, and OpenAPI request schemas. The README curl commands cover the reviewer path from `/tools` through each invoke endpoint and `/audit`.
 
 | Part | Verification |
 |---|---|

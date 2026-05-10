@@ -8,7 +8,6 @@ from pydantic import BaseModel, ConfigDict, Field
 
 Brand = Literal["efood", "glovo", "talabat"]
 Outcome = Literal["success", "schema_invalid", "brand_denied", "tool_error"]
-ToolOutcome = Outcome
 
 
 class SearchPrsArgs(BaseModel):
