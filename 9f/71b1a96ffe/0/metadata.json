@@ -1,0 +1,70 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "9f71b1a96ffe",
+  "session_id": "9f41c325-221d-4b13-aa2b-77ff5af3759f",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-10T04:49:05.653792Z",
+  "branch": "foregoing-gardenia",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "case-02-session/src/guardrails.py"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "5f10f8a3a18a",
+  "token_usage": {
+    "input_tokens": 17016,
+    "cache_creation_tokens": 914962,
+    "cache_read_tokens": 8340544,
+    "output_tokens": 144570,
+    "api_call_count": 101
+  },
+  "session_metrics": {
+    "turn_count": 26
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-10T04:49:05.5824Z",
+    "agent_lines": 65,
+    "agent_removed": 7,
+    "human_added": 56,
+    "human_modified": 2,
+    "human_removed": 0,
+    "total_committed": 123,
+    "total_lines_changed": 130,
+    "agent_percentage": 55.38461538461539,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 637,
+      "user_lines_removed": 69,
+      "agent_lines_added": 29654,
+      "agent_lines_removed": 968,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 7,
+        "case-02-session/src/db_models.py": 15,
+        "case-02-session/src/guardrails.py": 58,
+        "case-02-session/src/llm.py": 7,
+        "case-02-session/src/routes.py": 63,
+        "case-02-session/src/service.py": 134,
+        "case-02-session/src/sqlite_repository.py": 118,
+        "case-02-session/tests/conftest.py": 14,
+        "case-02-session/tests/test_audit_debug.py": 1,
+        "case-02-session/tests/test_e2e.py": 140,
+        "wt-guardrails/case-02-session/glovo/AGENTS.md": 17,
+        "wt-guardrails/case-02-session/glovo/sample_diff.patch": 23,
+        "wt-routes/case-02-session/glovo/AGENTS.md": 17,
+        "wt-routes/case-02-session/glovo/sample_diff.patch": 23
+      },
+      "user_removed_per_file": {
+        "case-02-session/src/guardrails.py": 2,
+        "case-02-session/src/llm.py": 14,
+        "case-02-session/src/routes.py": 1,
+        "case-02-session/src/service.py": 11,
+        "case-02-session/src/sqlite_repository.py": 33,
+        "case-02-session/tests/test_e2e.py": 8
+      }
+    }
+  ]
+}

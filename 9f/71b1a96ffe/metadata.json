@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "9f71b1a96ffe",
+  "strategy": "manual-commit",
+  "branch": "foregoing-gardenia",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "case-02-session/src/guardrails.py"
+  ],
+  "sessions": [
+    {
+      "metadata": "/9f/71b1a96ffe/0/metadata.json",
+      "transcript": "/9f/71b1a96ffe/0/full.jsonl",
+      "content_hash": "/9f/71b1a96ffe/0/content_hash.txt",
+      "prompt": "/9f/71b1a96ffe/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 17016,
+    "cache_creation_tokens": 914962,
+    "cache_read_tokens": 8340544,
+    "output_tokens": 144570,
+    "api_call_count": 101
+  }
+}
