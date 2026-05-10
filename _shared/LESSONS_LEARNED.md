@@ -173,6 +173,16 @@ HTTP method, route/path, actor, request body fingerprint 같은 request scope를
 
 ## Agent Prompt 필수 체크리스트 (Phase 3 시작 전)
 
+### Mistake 9 — Pydantic v2 형제 모델 변환을 직접 검증함 (case-03-context)
+
+**무슨 일**: `AuditRecord.model_validate(ToolInvocation(...))`가 500을 냈다.
+
+**왜 발생**: `AuditRecord`가 `ToolInvocation`을 상속해도 Pydantic v2는 형제/부모 모델 인스턴스를 dict처럼 자동 변환하지 않는다.
+
+**핵심 원인**: 저장 모델을 응답 모델로 바꿀 때 명시적인 직렬화 단계를 빠뜨렸다.
+
+**다음에 할 것**: 모델 간 응답 변환은 `AuditRecord.model_validate(item.model_dump())`처럼 `model_dump()`를 거친다. 회귀 테스트나 curl로 `GET /audit`까지 확인한다.
+
 Agent A (routes + LLM) prompt에 반드시 포함할 것:
 
 ```
