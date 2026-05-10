@@ -488,38 +488,63 @@ class PatchProposalOut(BaseModel): # response DTO — no checks
 
 Add this to README §1 before writing any route. This diagram is what the evaluator reads in 30 seconds to assess system thinking.
 
+Use Mermaid for the architecture diagram — it renders on GitHub and makes the deterministic vs LLM boundary visually clear.
+
+```mermaid
+flowchart TD
+    DEV([Developer Request])
+    DEV --> S1
+
+    subgraph S1["POST /sessions"]
+        A1["brand: '{brand}'\nresolves {brand}/AGENTS.md path"]:::det
+    end
+
+    S1 --> S2
+
+    subgraph S2["POST /sessions/{id}/plan"]
+        B1["{brand}/AGENTS.md\n그때그때 읽기"]:::det
+        B2["LLM: 작업을 단계로 쪼갬\n결과: list[PlanStep]"]:::llm
+        B3["target_files 비어있으면 오류"]:::det
+        B1 --> B2 --> B3
+    end
+
+    S2 --> S3
+
+    subgraph S3["POST /sessions/{id}/steps/{stepId}/patches"]
+        C1["LLM: diff 작성\n결과: PatchProposal"]:::llm
+        C2["step 아래 저장"]:::det
+        C1 --> C2
+    end
+
+    S3 --> S4
+
+    subgraph S4["POST /sessions/{id}/steps/{stepId}/patches/{patchId}/check"]
+        D1["{brand}/AGENTS.md\n그때그때 읽기"]:::det
+        D2["규칙별 regex 체크\n결과: GuardrailCheck × N"]:::det
+        D3{"BLOCK 있나?"}:::det
+        D1 --> D2 --> D3
+        D3 -->|있음| D4["머지 차단"]:::det
+        D3 -->|없음| D5["WARNING/INFO만"]:::det
+    end
+
+    S4 --> S5
+
+    subgraph S5["GET /sessions/{id}"]
+        E1["전체 상태 반환\nsteps > patches > checks + trace_id"]:::det
+    end
+
+    classDef det fill:#e8f4f8,stroke:#2196F3,color:#000
+    classDef llm fill:#fff3e0,stroke:#FF9800,color:#000
 ```
-Architecture — Deterministic Sandwich:
 
-Developer Request
-        │
-        ▼
-[POST /sessions]
-  brand: "efood" → resolves AGENTS.md path         ← deterministic
+파란 박스: 서비스가 직접 처리 (결과 예측 가능)
+주황 박스: LLM이 처리 (결과가 매번 다를 수 있음)
 
-[POST /sessions/{id}/plan]
-  load AGENTS.md just-in-time                       ← deterministic
-  → LLM(claude-sonnet-4-6): decompose → [PlanStep] ← non-deterministic, schema-constrained
-  → validate: target_files non-empty               ← deterministic
+**Opening sentence** (README §1에 그대로 넣기):
+> "This service models an AI-assisted coding workflow. The LLM proposes candidate changes; deterministic checks decide merge readiness."
 
-[POST /sessions/{id}/steps/{step_id}/patches]
-  → LLM: generate unified diff for PlanStep        ← non-deterministic
-  → store as PatchProposal(diff=...)
-
-[POST /sessions/{id}/steps/{step_id}/patches/{patch_id}/check]
-  → load AGENTS.md for brand just-in-time          ← deterministic
-  → for each rule: regex check → GuardrailCheck    ← deterministic
-  → any BLOCK? → merge gated                       ← deterministic
-
-[GET /sessions/{id}]
-  → full state: steps + patches + checks + trace_id
-```
-
-**Opening sentence** (copy verbatim into README §1):
-> "This service converts implicit human debugging workflows into explicit, observable agent workflows — the LLM proposes, deterministic checks decide."
-
-**Positioning sentence** (copy verbatim, 2nd line of README intro):
-> "It is not a Cursor clone — it is the DH-aware integration layer that injects brand context (AGENTS.md) and enforces Engineering Manifesto guardrails before any AI-generated patch can be merged."
+**Positioning sentence** (README intro 두 번째 줄):
+> "It is not a Cursor clone. It is the DH-aware integration layer that injects brand context (AGENTS.md) and enforces Engineering Manifesto guardrails before any AI-generated patch can be merged."
 
 ---
 
@@ -956,52 +981,55 @@ Commit messages are part of the submission. Each one should read like a PR title
 
 ## Signal Phrases for README (copy, then customize)
 
-```
 README intro (2 sentences max):
-"This service converts implicit human debugging workflows into explicit, observable
-agent workflows — the LLM proposes, deterministic checks decide.
-It is not a Cursor clone — it is the DH-aware integration layer that injects
+```
+This service models an AI-assisted coding workflow. The LLM proposes candidate
+changes; deterministic checks decide merge readiness.
+It is not a Cursor clone. It is the DH-aware integration layer that injects
 brand context (AGENTS.md) and enforces Engineering Manifesto guardrails before
-any AI-generated patch can be merged."
+any AI-generated patch can be merged.
+```
 
 AI Leverage section (mandate):
-"The LLM only performs extraction and proposal generation.
-Merging, validation, and guardrail evaluation are deterministic."
+```
+The LLM only performs extraction and proposal generation.
+Merging, validation, and guardrail evaluation are deterministic.
+```
 
 Trade-off (scope control):
-"I intentionally deferred [X] because [Y] mattered more within the [N]-hour constraint.
-I would reconsider if [Z]."
+```
+I intentionally deferred [X] because [Y] mattered more within the [N]-hour constraint.
+I would reconsider if [Z].
+```
 
 Multi-brand extensibility (show architectural thinking):
-"The guardrail loader accepts brand as a parameter.
+```
+The guardrail loader accepts brand as a parameter.
 Adding glovo would mean: create glovo/AGENTS.md, add 'glovo' to the Brand literal.
-No route code changes required."
+No route code changes required.
+```
 
 OTEL mention (shows production mindset):
-"trace_id is generated at session creation and propagated to every GuardrailCheck.
-In production, these would be exported as OTEL spans to DH OAM."
+```
+trace_id is generated at session creation and propagated to every GuardrailCheck.
+In production, these would be exported as OTEL spans to DH OAM.
 ```
 
 ---
 
 ## Anti-Patterns to Avoid
 
-1. **Framework-first** — No LangChain, no LlamaIndex. Direct `anthropic` SDK only.
-2. **Context dump** — Do NOT load AGENTS.md into a module-level variable at startup. Just-in-time.
-3. **LLM for guardrails** — R1–R5 are regex. LLM-as-judge is P2, named as such in README.
-4. **print() anywhere** — Use `logging`. This is also a test case.
-5. **README last** — Skeleton (all 5 sections + Architecture diagram) before first route.
-6. **E2E skip** — Pytest green ≠ feature correct. Always run the curl workflow.
-7. **Guardrail ignores AGENTS.md** — `run_checks(diff, brand)` MUST read `{brand}/AGENTS.md`
-   and parse severity from it. "brand parameter present but unused" is the failure mode, not
-   the solution. Litmus test: change a severity in `efood/AGENTS.md` — if the guardrail output
-   doesn't change, the implementation is wrong.
-8. **No trace_id** — It is one field, costs nothing, and signals OTEL/OAM awareness from the start.
-9. **"multi-brand" only in schema** — It must also appear in README as a described extension path.
-10. **Worktrees not visible in git log** — Merge commits should show feat/routes and feat/guardrails branch names.
-11. **Severity hardcoded as literals in rule dispatch** — Writing `_check("R1", "WARN", ...)` in
-    the dispatch list means changing AGENTS.md has no effect. Severity must flow from
-    `_parse_severities(brand)["R1"]` with a fallback default, never from an inline string literal.
+1. **Framework-first**: LangChain, LlamaIndex 쓰지 않는다. 직접 `anthropic` SDK만 사용한다.
+2. **Context dump**: AGENTS.md를 서버 시작 시 모듈 변수에 미리 로드하지 않는다. 요청마다 그때그때 읽는다.
+3. **LLM for guardrails**: 규칙 체크는 regex로 한다. LLM-as-judge는 P2로 README에만 언급한다.
+4. **print() 사용**: `logging`을 쓴다. print()는 테스트 케이스이기도 하다.
+5. **README 나중에**: README 스켈레톤(5개 섹션 + 아키텍처 다이어그램)을 첫 번째 route 작성 전에 먼저 만든다.
+6. **E2E 생략**: pytest 통과 != 기능 정상. curl 워크플로우는 반드시 실행한다.
+7. **Guardrail이 AGENTS.md를 실제로 안 읽음**: `run_checks(diff, brand)`는 `{brand}/AGENTS.md`를 읽어서 severity를 결정해야 한다. "brand 파라미터는 있지만 안 쓴다"는 구현 누락이다. 리트머스 테스트: `efood/AGENTS.md`의 severity를 바꾼 뒤 테스트를 재실행했을 때 결과가 바뀌어야 한다.
+8. **trace_id 없음**: 필드 하나로 OTEL/OAM 인식을 보여줄 수 있다. 빠뜨리지 않는다.
+9. **"multi-brand"가 스키마에만 있음**: README에도 확장 경로로 설명해야 한다.
+10. **Worktree가 git log에 안 보임**: merge 커밋에 feat/routes, feat/guardrails 브랜치 이름이 보여야 한다.
+11. **Severity를 rule dispatch 목록에 하드코딩**: `_check("R1", "WARN", ...)` 방식으로 쓰면 AGENTS.md를 바꿔도 결과가 안 바뀐다. severity는 항상 `_parse_severities(brand)["R1"]`에서 가져와야 하며, 인라인 문자열로 쓰면 안 된다.
 
 ---
 
