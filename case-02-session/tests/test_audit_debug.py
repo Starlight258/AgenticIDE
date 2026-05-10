@@ -33,6 +33,7 @@ def test_audit_log_debug() -> None:
     _debug_repo.clear()
 
     from src.config import Settings
+
     test_settings = Settings(anthropic_api_key="", env="test")
     app.dependency_overrides[get_repo] = lambda: _debug_repo
     app.dependency_overrides[get_settings] = lambda: test_settings

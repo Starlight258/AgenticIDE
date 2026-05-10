@@ -4,9 +4,9 @@ from uuid import UUID, uuid4
 import structlog
 
 from src import guardrails
-from src.errors import NotFoundError
+from src.errors import APIError, AlreadyCheckedError
 from src.llm import LLMProvider
-from src.models import GuardrailCheck, PatchProposal, PlanStep, Session
+from src.models import GuardrailCheck, PatchProposal, PlanStep, Session, TestRun
 from src.repository import SessionRepository
 from src.schemas import (
     PatchCreate,
@@ -14,6 +14,9 @@ from src.schemas import (
     PlanStepInput,
     PlanStepOut,
     SessionCreate,
+    StepReadinessOut,
+    TestRunCreate,
+    TestRunOut,
 )
 
 logger = structlog.get_logger(__name__)
@@ -61,18 +64,35 @@ async def create_patch(
     repo: SessionRepository,
     llm_client: LLMProvider,
 ) -> PatchProposalOut:
-    step = await repo.find_step(session.id, payload.step_id)
+    return await create_patch_for_step(session, payload.step_id, repo, llm_client)
+
+
+async def create_patch_for_step(
+    session: Session,
+    step_id: UUID,
+    repo: SessionRepository,
+    llm_client: LLMProvider,
+) -> PatchProposalOut:
+    step = await repo.find_step(session.id, step_id)
     if step is None:
-        raise NotFoundError("step not found")
+        raise APIError(
+            404,
+            "step_not_found",
+            f"Step {step_id} not found in session {session.id}",
+        )
 
     patch_id = uuid4()
     patch_input = await llm_client.create_patch(
         _to_plan_step_input(step), session.brand
     )
-    patch = _to_patch(session, payload.step_id, patch_input.diff, patch_id)
+    patch = _to_patch(session, step_id, patch_input.diff, patch_id)
     stored = await repo.save_patch(session.id, patch)
     if stored is None:
-        raise NotFoundError("step not found")
+        raise APIError(
+            404,
+            "step_not_found",
+            f"Step {step_id} not found in session {session.id}",
+        )
 
     result = PatchProposalOut.model_validate(stored)
     logger.info("patch_created", patch_id=str(stored.id))
@@ -85,7 +105,11 @@ async def check_patch_in_session(
     repo: SessionRepository,
 ) -> list[GuardrailCheck]:
     if not await repo.patch_belongs_to_session(session.id, patch_id):
-        raise NotFoundError("patch not found in session")
+        raise APIError(
+            404,
+            "patch_not_found",
+            f"Patch {patch_id} not found in session {session.id}",
+        )
     return await _run_patch_checks(patch_id, repo)
 
 
@@ -102,12 +126,111 @@ async def _run_patch_checks(
 ) -> list[GuardrailCheck]:
     patch = await repo.get_patch(patch_id)
     if patch is None:
-        raise NotFoundError("patch not found")
+        raise APIError(404, "patch_not_found", f"Patch {patch_id} not found")
+    if patch.checks:
+        raise AlreadyCheckedError(patch_id, patch.checks)
+
     checks = guardrails.run_checks(patch.diff, patch.brand)
-    stored = await repo.save_checks(patch_id, checks)
+    updated = await repo.update_patch_if_version(patch_id, patch.version, checks)
+    if updated:
+        return checks
+
+    latest = await repo.get_patch(patch_id)
+    if latest is not None and latest.checks:
+        raise AlreadyCheckedError(patch_id, latest.checks)
+    raise APIError(409, "version_conflict", f"Patch {patch_id} changed during check")
+
+
+async def get_step_readiness(
+    session: Session,
+    step_id: UUID,
+    repo: SessionRepository,
+) -> StepReadinessOut:
+    step = await _get_full_step(session.id, step_id, repo)
+    latest_patch = max(step.patches, key=lambda patch: patch.created_at, default=None)
+    if latest_patch is None or not latest_patch.checks:
+        return StepReadinessOut(
+            step_id=step_id,
+            verdict="NOT_READY",
+            block_count=0,
+            warn_count=0,
+            latest_patch_id=latest_patch.id if latest_patch else None,
+        )
+
+    block_count = _count_checks(latest_patch.checks, "BLOCK")
+    warn_count = _count_checks(latest_patch.checks, "WARN")
+    verdict = "NOT_READY" if block_count else "READY"
+    return StepReadinessOut(
+        step_id=step_id,
+        verdict=verdict,
+        block_count=block_count,
+        warn_count=warn_count,
+        latest_patch_id=latest_patch.id,
+    )
+
+
+async def create_test_run(
+    session: Session,
+    payload: TestRunCreate,
+    repo: SessionRepository,
+) -> TestRunOut:
+    for patch_id in payload.patch_ids:
+        patch = await repo.get_patch(patch_id)
+        if patch is None:
+            raise APIError(
+                422,
+                "patch_not_found_in_payload",
+                f"Patch {patch_id} does not exist",
+                patch_id=str(patch_id),
+            )
+        if not await repo.patch_belongs_to_session(session.id, patch_id):
+            raise APIError(
+                422,
+                "patch_not_in_session",
+                f"Patch {patch_id} is not in session {session.id}",
+                patch_id=str(patch_id),
+            )
+
+    test_run = TestRun(
+        id=uuid4(),
+        session_id=session.id,
+        patch_ids=payload.patch_ids,
+        outcome=payload.outcome,
+        notes=payload.notes,
+        created_at=_now(),
+    )
+    stored = await repo.save_test_run(session.id, test_run)
     if stored is None:
-        raise NotFoundError("patch not found")
-    return stored
+        raise APIError(
+            404,
+            "session_not_found",
+            f"Session {session.id} not found",
+        )
+    return TestRunOut.model_validate(stored)
+
+
+async def _get_full_step(
+    session_id: UUID,
+    step_id: UUID,
+    repo: SessionRepository,
+) -> PlanStep:
+    session = await repo.get_session(session_id)
+    if session is None:
+        raise APIError(404, "session_not_found", f"Session {session_id} not found")
+    step = next((item for item in session.steps if item.id == step_id), None)
+    if step is None:
+        raise APIError(
+            404,
+            "step_not_found",
+            f"Step {step_id} not found in session {session_id}",
+        )
+    return step
+
+
+def _count_checks(checks: list[GuardrailCheck], severity: str) -> int:
+    return sum(
+        check.result == "fail" and check.severity == severity for check in checks
+    )
 
 
 def _to_plan_step(step: PlanStepInput) -> PlanStep:

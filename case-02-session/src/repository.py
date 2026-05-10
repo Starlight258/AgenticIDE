@@ -3,7 +3,7 @@
 from typing import Optional, Protocol
 from uuid import UUID
 
-from src.models import GuardrailCheck, PatchProposal, PlanStep, Session
+from src.models import GuardrailCheck, PatchProposal, PlanStep, Session, TestRun
 
 
 class SessionRepository(Protocol):
@@ -34,6 +34,21 @@ class SessionRepository(Protocol):
     async def save_checks(
         self, patch_id: UUID, checks: list[GuardrailCheck]
     ) -> Optional[list[GuardrailCheck]]: ...
+
+    async def update_patch_if_version(
+        self,
+        patch_id: UUID,
+        expected_version: int,
+        checks: list[GuardrailCheck],
+    ) -> bool:
+        """CAS update: set checks and increment version only if current version matches.
+        Returns True on success, False on version conflict.
+        """
+        ...
+
+    async def save_test_run(
+        self, session_id: UUID, test_run: TestRun
+    ) -> Optional[TestRun]: ...
 
     async def log_audit(
         self,

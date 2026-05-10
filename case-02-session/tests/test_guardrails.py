@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from src.guardrails import run_checks
 
 
@@ -64,6 +66,29 @@ def test_only_added_lines_are_checked() -> None:
     checks = run_checks(diff, "efood")
 
     assert all(check.result == "pass" for check in checks)
+
+
+def test_glovo_sample_diff_all_five_fail() -> None:
+    diff = Path("glovo/sample_diff.patch").read_text()
+    checks = run_checks(diff, "glovo")
+
+    assert len(checks) == 5
+    assert {c.ruleId for c in checks} == {"G1", "G2", "G3", "G4", "G5"}
+    assert all(c.result == "fail" for c in checks), [
+        (c.ruleId, c.result) for c in checks if c.result != "fail"
+    ]
+
+
+def test_glovo_agents_md_drives_severity() -> None:
+    path = Path("glovo/AGENTS.md")
+    original = path.read_text()
+    path.write_text(original.replace("G1 BLOCK:", "G1 WARN:"))
+    try:
+        checks = run_checks("+tip = float(x)\n", "glovo")
+        g1 = next(c for c in checks if c.ruleId == "G1")
+        assert g1.severity == "WARN", "severity must be driven by AGENTS.md"
+    finally:
+        path.write_text(original)
 
 
 def _result(checks: list[object], rule_id: str) -> str:

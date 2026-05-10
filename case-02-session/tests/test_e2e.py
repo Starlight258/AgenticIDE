@@ -6,6 +6,7 @@ from src.deps import get_llm
 from src.llm import LLMUnavailableError
 from src.main import app
 from src.models import Brand
+from src.routes import router
 from src.schemas import PatchProposalInput, PlanStepInput
 
 client = TestClient(app)
@@ -33,8 +34,7 @@ def test_full_session_workflow_uses_spec_endpoint() -> None:
     assert "patches" not in plan[0]
 
     patch_response = client.post(
-        f"/sessions/{session_id}/patches",
-        json={"step_id": plan[0]["id"]},
+        f"/sessions/{session_id}/plan/{plan[0]['id']}/patches",
         headers=AUTH,
     )
     assert patch_response.status_code == 200
@@ -152,7 +152,7 @@ def test_missing_patch_via_spec_endpoint_returns_404() -> None:
     assert response.status_code == 404
 
 
-def test_check_is_idempotent_and_overwrites_checks() -> None:
+def test_second_check_returns_409_with_existing_checks() -> None:
     session = _create_session()
     plan = client.post(f"/sessions/{session['id']}/plan", headers=AUTH).json()
     patch = client.post(
@@ -167,11 +167,143 @@ def test_check_is_idempotent_and_overwrites_checks() -> None:
     ).json()
     second = client.post(
         f"/sessions/{session_id}/patches/{patch['id']}/check", headers=AUTH
-    ).json()
+    )
     nested = client.get(f"/sessions/{session_id}", headers=AUTH).json()
 
-    assert second == first
-    assert nested["steps"][0]["patches"][0]["checks"] == second
+    assert second.status_code == 409
+    assert second.json()["error"] == "checks_already_exist"
+    assert second.json()["checks"] == first
+    assert nested["steps"][0]["patches"][0]["checks"] == first
+
+
+def test_readiness_uses_latest_patch_even_if_unchecked() -> None:
+    class CleanThenUncheckedLLM:
+        calls = 0
+
+        async def create_plan(
+            self,
+            title: str,
+            description: str,
+            brand: Brand,
+        ) -> list[PlanStepInput]:
+            return [
+                PlanStepInput(description="Update handler", target_files=["app.py"])
+            ]
+
+        async def create_patch(
+            self,
+            step: PlanStepInput,
+            brand: Brand,
+        ) -> PatchProposalInput:
+            self.calls += 1
+            if self.calls == 1:
+                return PatchProposalInput(
+                    diff=(
+                        "--- a/app.py\n"
+                        "+++ b/app.py\n"
+                        "@@ -0,0 +1,3 @@\n"
+                        "+def handler():\n"
+                        '+    """Handle request."""\n'
+                        "+    return None\n"
+                    )
+                )
+            return PatchProposalInput(
+                diff="--- a/app.py\n+++ b/app.py\n@@ -0,0 +1,1 @@\n+value = 1\n"
+            )
+
+    llm = CleanThenUncheckedLLM()
+    app.dependency_overrides[get_llm] = lambda: llm
+    session = _create_session()
+    plan = client.post(f"/sessions/{session['id']}/plan", headers=AUTH).json()
+    step_id = plan[0]["id"]
+
+    first_patch = client.post(
+        f"/sessions/{session['id']}/plan/{step_id}/patches", headers=AUTH
+    ).json()
+    first_check = client.post(
+        f"/sessions/{session['id']}/patches/{first_patch['id']}/check", headers=AUTH
+    )
+    assert first_check.status_code == 200
+
+    ready = client.get(
+        f"/sessions/{session['id']}/plan/{step_id}/readiness", headers=AUTH
+    ).json()
+    assert ready["verdict"] == "READY"
+    assert ready["latest_patch_id"] == first_patch["id"]
+
+    second_patch = client.post(
+        f"/sessions/{session['id']}/plan/{step_id}/patches", headers=AUTH
+    ).json()
+    latest = client.get(
+        f"/sessions/{session['id']}/plan/{step_id}/readiness", headers=AUTH
+    ).json()
+
+    assert latest["verdict"] == "NOT_READY"
+    assert latest["latest_patch_id"] == second_patch["id"]
+    assert latest["block_count"] == 0
+    assert latest["warn_count"] == 0
+
+
+def test_test_run_records_patch_ids_on_session() -> None:
+    session = _create_session()
+    plan = client.post(f"/sessions/{session['id']}/plan", headers=AUTH).json()
+    patch = client.post(
+        f"/sessions/{session['id']}/plan/{plan[0]['id']}/patches", headers=AUTH
+    ).json()
+
+    response = client.post(
+        f"/sessions/{session['id']}/test-runs",
+        json={"patch_ids": [patch["id"]], "outcome": "PARTIAL", "notes": "local only"},
+        headers=AUTH,
+    )
+
+    assert response.status_code == 200
+    test_run = response.json()
+    assert test_run["session_id"] == session["id"]
+    assert test_run["patch_ids"] == [patch["id"]]
+    assert test_run["outcome"] == "PARTIAL"
+
+    nested = client.get(f"/sessions/{session['id']}", headers=AUTH).json()
+    assert nested["test_runs"][0]["id"] == test_run["id"]
+
+
+def test_test_run_rejects_patch_from_other_session() -> None:
+    session_a = _create_session()
+    session_b = _create_session()
+    plan_a = client.post(f"/sessions/{session_a['id']}/plan", headers=AUTH).json()
+    patch_a = client.post(
+        f"/sessions/{session_a['id']}/plan/{plan_a[0]['id']}/patches", headers=AUTH
+    ).json()
+
+    response = client.post(
+        f"/sessions/{session_b['id']}/test-runs",
+        json={"patch_ids": [patch_a["id"]], "outcome": "FAIL"},
+        headers=AUTH,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"] == "patch_not_in_session"
+
+
+def test_glovo_mock_sample_diff_flags_all_guardrails() -> None:
+    session = _create_session(brand="glovo")
+    plan = client.post(f"/sessions/{session['id']}/plan", headers=AUTH).json()
+    patch = client.post(
+        f"/sessions/{session['id']}/plan/{plan[0]['id']}/patches", headers=AUTH
+    ).json()
+
+    response = client.post(
+        f"/sessions/{session['id']}/patches/{patch['id']}/check", headers=AUTH
+    )
+
+    assert response.status_code == 200
+    checks = response.json()
+    assert {check["ruleId"] for check in checks} == {"G1", "G2", "G3", "G4", "G5"}
+    assert all(check["result"] == "fail" for check in checks)
+
+
+def test_router_has_at_least_8_routes() -> None:
+    assert len(router.routes) >= 8
 
 
 # --- New tests ---
@@ -237,6 +369,26 @@ def test_idempotency_returns_cached_plan() -> None:
     assert first_plan == second_plan
 
 
+def test_idempotency_key_is_scoped_to_endpoint() -> None:
+    """Reusing one Idempotency-Key across endpoints must not replay wrong response shape."""
+    session = _create_session()
+    session_id = session["id"]
+    headers = {**AUTH, "Idempotency-Key": "shared-key-across-endpoints"}
+
+    plan_response = client.post(f"/sessions/{session_id}/plan", headers=headers)
+    assert plan_response.status_code == 200
+    plan = plan_response.json()
+
+    patch_response = client.post(
+        f"/sessions/{session_id}/patches",
+        json={"step_id": plan[0]["id"]},
+        headers=headers,
+    )
+
+    assert patch_response.status_code == 200
+    assert patch_response.json()["step_id"] == plan[0]["id"]
+
+
 def test_circuit_breaker_returns_503_after_llm_failures() -> None:
     """When LLM raises LLMUnavailableError the endpoint returns 503."""
 
@@ -282,13 +434,13 @@ def test_audit_log_records_llm_call() -> None:
     assert entry["actor"] == "test-token"
 
 
-def _create_session() -> dict[str, object]:
+def _create_session(brand: Brand = "efood") -> dict[str, object]:
     response = client.post(
         "/sessions",
         json={
             "title": "AI coding session",
             "description": "Implement deterministic efood guardrails",
-            "brand": "efood",
+            "brand": brand,
         },
         headers=AUTH,
     )
