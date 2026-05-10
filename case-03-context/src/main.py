@@ -1,9 +1,12 @@
-"""FastAPI entry point. Replace [CASE_NAME] with the actual case identifier."""
+"""FastAPI entry point for the DH context injection server."""
+
 from fastapi import FastAPI
 
 from src.audit_routes import router as audit_router
+from src.routes import router as tools_router
 
-app = FastAPI(title="[CASE_NAME]")
+app = FastAPI(title="DH Context Injection Server")
+app.include_router(tools_router)
 app.include_router(audit_router)
 
 
