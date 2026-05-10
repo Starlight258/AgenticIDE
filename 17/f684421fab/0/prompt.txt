@@ -1,0 +1,21 @@
+/assignment 구현했는데 나머지 단계 진행해줘 @case-02-session/assignment.md
+
+---
+
+응
+
+---
+
+main에 pr 보내줘
+
+---
+
+근데 @README.md 에서 AI Leverage 파트 부분 내용은 ai가한것과 하지 않은것인데 이게 ai leverage 파트인거야? 제목이 좀 안맞는거같은데
+
+---
+
+2로 하자
+
+---
+
+@../_shared/README_5sections.md 에도 반영해줘

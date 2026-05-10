@@ -1,0 +1,117 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "17f684421fab",
+  "session_id": "a3bd13f0-4b38-4709-988b-8280de3e01d8",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-10T04:59:29.661382Z",
+  "branch": "foregoing-gardenia",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "_shared/README_5sections.md",
+    "case-02-session/README.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "ad2af8e39797",
+  "token_usage": {
+    "input_tokens": 57,
+    "cache_creation_tokens": 71921,
+    "cache_read_tokens": 2300589,
+    "output_tokens": 18802,
+    "api_call_count": 44
+  },
+  "session_metrics": {
+    "turn_count": 6
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-10T04:59:29.651221Z",
+    "agent_lines": 20,
+    "agent_removed": 16,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 20,
+    "total_lines_changed": 36,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 90,
+      "user_lines_removed": 0,
+      "agent_lines_added": 30243,
+      "agent_lines_removed": 1039,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 10,
+        "wt-guardrails/case-02-session/glovo/AGENTS.md": 17,
+        "wt-guardrails/case-02-session/glovo/sample_diff.patch": 23,
+        "wt-routes/case-02-session/glovo/AGENTS.md": 17,
+        "wt-routes/case-02-session/glovo/sample_diff.patch": 23
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 92,
+      "user_lines_removed": 0,
+      "agent_lines_added": 30243,
+      "agent_lines_removed": 1039,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 12,
+        "wt-guardrails/case-02-session/glovo/AGENTS.md": 17,
+        "wt-guardrails/case-02-session/glovo/sample_diff.patch": 23,
+        "wt-routes/case-02-session/glovo/AGENTS.md": 17,
+        "wt-routes/case-02-session/glovo/sample_diff.patch": 23
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 92,
+      "user_lines_removed": 0,
+      "agent_lines_added": 30243,
+      "agent_lines_removed": 1039,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 12,
+        "wt-guardrails/case-02-session/glovo/AGENTS.md": 17,
+        "wt-guardrails/case-02-session/glovo/sample_diff.patch": 23,
+        "wt-routes/case-02-session/glovo/AGENTS.md": 17,
+        "wt-routes/case-02-session/glovo/sample_diff.patch": 23
+      }
+    },
+    {
+      "checkpoint_number": 6,
+      "user_lines_added": 92,
+      "user_lines_removed": 0,
+      "agent_lines_added": 30252,
+      "agent_lines_removed": 1055,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 12,
+        "wt-guardrails/case-02-session/glovo/AGENTS.md": 17,
+        "wt-guardrails/case-02-session/glovo/sample_diff.patch": 23,
+        "wt-routes/case-02-session/glovo/AGENTS.md": 17,
+        "wt-routes/case-02-session/glovo/sample_diff.patch": 23
+      }
+    },
+    {
+      "checkpoint_number": 7,
+      "user_lines_added": 92,
+      "user_lines_removed": 0,
+      "agent_lines_added": 30263,
+      "agent_lines_removed": 1055,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 12,
+        "wt-guardrails/case-02-session/glovo/AGENTS.md": 17,
+        "wt-guardrails/case-02-session/glovo/sample_diff.patch": 23,
+        "wt-routes/case-02-session/glovo/AGENTS.md": 17,
+        "wt-routes/case-02-session/glovo/sample_diff.patch": 23
+      }
+    }
+  ]
+}

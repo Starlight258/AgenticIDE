@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "17f684421fab",
+  "strategy": "manual-commit",
+  "branch": "foregoing-gardenia",
+  "checkpoints_count": 6,
+  "files_touched": [
+    "_shared/README_5sections.md",
+    "case-02-session/README.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/17/f684421fab/0/metadata.json",
+      "transcript": "/17/f684421fab/0/full.jsonl",
+      "content_hash": "/17/f684421fab/0/content_hash.txt",
+      "prompt": "/17/f684421fab/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 57,
+    "cache_creation_tokens": 71921,
+    "cache_read_tokens": 2300589,
+    "output_tokens": 18802,
+    "api_call_count": 44
+  }
+}
