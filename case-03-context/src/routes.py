@@ -37,7 +37,7 @@ class ToolSpec(BaseModel):
 
     args_model: type[BaseModel]
     permission: Callable[[Brand, Any], PermissionDecision]
-    execute: Callable[[Any], tuple[dict[str, Any], str]]
+    execute: Callable[[Any], tuple[Any, str]]
 
 
 TOOL_REGISTRY: dict[str, ToolSpec] = {

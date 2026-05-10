@@ -41,7 +41,7 @@ def check_get_slack_messages(
 ) -> PermissionDecision:
     """Slack permission is based on a caller-brand channel whitelist."""
     allowed_channels = SLACK_CHANNEL_WHITELIST[caller_brand]
-    if args.channel_id in allowed_channels:
+    if args.channel in allowed_channels:
         return allow()
     return deny("caller brand is not allowed to read this Slack channel")
 

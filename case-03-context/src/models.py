@@ -18,6 +18,7 @@ class SearchPrsArgs(BaseModel):
 
     brand: Brand
     query: str = Field(min_length=1)
+    limit: int = Field(ge=1, le=50)
 
 
 class GetSlackMessagesArgs(BaseModel):
@@ -26,8 +27,8 @@ class GetSlackMessagesArgs(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     brand: Brand
-    channel_id: str = Field(min_length=1)
-    limit: int = Field(default=10, ge=1, le=50)
+    channel: str = Field(min_length=1)
+    since: datetime
 
 
 class FetchGdriveDocArgs(BaseModel):
@@ -45,13 +46,14 @@ class ToolDefinition(BaseModel):
     name: str
     description: str
     args_schema: dict[str, Any]
+    brand_requirements: str
 
 
 class ToolInvokeResponse(BaseModel):
     """Response returned after a tool invocation."""
 
     tool_call_id: UUID
-    result: dict[str, Any]
+    result: Any
 
 
 class ToolInvocation(BaseModel):
