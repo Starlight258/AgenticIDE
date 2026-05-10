@@ -19,3 +19,7 @@ main에 pr 보내줘
 ---
 
 @../_shared/README_5sections.md 에도 반영해줘
+
+---
+
+응 main에 push까지해줘
