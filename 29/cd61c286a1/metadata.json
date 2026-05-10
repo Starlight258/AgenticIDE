@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "29cd61c286a1",
+  "strategy": "manual-commit",
+  "branch": "foregoing-gardenia",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "_shared/AGENTS.md",
+    "_shared/LESSONS_LEARNED.md",
+    "case-02-session/AGENTS.md",
+    "case-02-session/CODEX_PROMPTS.md",
+    "case-02-session/SPEC.md",
+    "case-02-session/pyproject.toml",
+    "case-02-session/src/db_models.py",
+    "case-02-session/src/deps.py",
+    "case-02-session/src/exceptions.py",
+    "case-02-session/src/llm.py",
+    "case-02-session/src/models.py",
+    "case-02-session/src/repository.py",
+    "case-02-session/src/routes.py",
+    "case-02-session/src/service.py",
+    "case-02-session/src/sqlite_repository.py",
+    "case-02-session/tests/conftest.py",
+    "case-02-session/tests/test_audit_debug.py",
+    "case-02-session/tests/test_e2e.py",
+    "case-02-session/tests/test_guardrails.py",
+    "case-02-session/uv.lock"
+  ],
+  "sessions": [
+    {
+      "metadata": "/29/cd61c286a1/0/metadata.json",
+      "transcript": "/29/cd61c286a1/0/full.jsonl",
+      "content_hash": "/29/cd61c286a1/0/content_hash.txt",
+      "prompt": "/29/cd61c286a1/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 59,
+    "cache_creation_tokens": 72700,
+    "cache_read_tokens": 2445058,
+    "output_tokens": 18913,
+    "api_call_count": 46
+  }
+}

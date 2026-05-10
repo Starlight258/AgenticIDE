@@ -1,0 +1,65 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "29cd61c286a1",
+  "session_id": "a3bd13f0-4b38-4709-988b-8280de3e01d8",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-10T05:11:04.517883Z",
+  "branch": "foregoing-gardenia",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "_shared/AGENTS.md",
+    "_shared/LESSONS_LEARNED.md",
+    "case-02-session/AGENTS.md",
+    "case-02-session/CODEX_PROMPTS.md",
+    "case-02-session/SPEC.md",
+    "case-02-session/pyproject.toml",
+    "case-02-session/src/db_models.py",
+    "case-02-session/src/deps.py",
+    "case-02-session/src/exceptions.py",
+    "case-02-session/src/llm.py",
+    "case-02-session/src/models.py",
+    "case-02-session/src/repository.py",
+    "case-02-session/src/routes.py",
+    "case-02-session/src/service.py",
+    "case-02-session/src/sqlite_repository.py",
+    "case-02-session/tests/conftest.py",
+    "case-02-session/tests/test_audit_debug.py",
+    "case-02-session/tests/test_e2e.py",
+    "case-02-session/tests/test_guardrails.py",
+    "case-02-session/uv.lock"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "ad2af8e39797",
+  "token_usage": {
+    "input_tokens": 59,
+    "cache_creation_tokens": 72700,
+    "cache_read_tokens": 2445058,
+    "output_tokens": 18913,
+    "api_call_count": 46
+  },
+  "session_metrics": {
+    "turn_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-10T05:11:04.505123Z",
+    "agent_lines": 1150,
+    "agent_removed": 1039,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1150,
+    "total_lines_changed": 2189,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 0,
+      "user_lines_removed": 0,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0
+    }
+  ]
+}
