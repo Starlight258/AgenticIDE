@@ -28,14 +28,14 @@ def deny(reason: str) -> PermissionDecision:
     return PermissionDecision(allowed=False, denial_reason=reason)
 
 
-def can_search_prs(caller_brand: Brand, args: SearchPrsArgs) -> PermissionDecision:
+def check_search_prs(caller_brand: Brand, args: SearchPrsArgs) -> PermissionDecision:
     """PR search permission is strict brand equality."""
     if caller_brand == args.brand:
         return allow()
     return deny("caller brand cannot search another brand's PRs")
 
 
-def can_get_slack_messages(
+def check_get_slack_messages(
     caller_brand: Brand,
     args: GetSlackMessagesArgs,
 ) -> PermissionDecision:
@@ -46,7 +46,7 @@ def can_get_slack_messages(
     return deny("caller brand is not allowed to read this Slack channel")
 
 
-def can_fetch_gdrive_doc(
+def check_fetch_gdrive_doc(
     caller_brand: Brand,
     args: FetchGdriveDocArgs,
 ) -> PermissionDecision:

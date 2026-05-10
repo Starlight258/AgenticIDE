@@ -21,9 +21,9 @@ from src.models import (
 )
 from src.permissions import (
     PermissionDecision,
-    can_fetch_gdrive_doc,
-    can_get_slack_messages,
-    can_search_prs,
+    check_fetch_gdrive_doc,
+    check_get_slack_messages,
+    check_search_prs,
 )
 from src.store import add_invocation
 from src.tools import fetch_gdrive_doc, get_slack_messages, list_tools, search_prs
@@ -43,17 +43,17 @@ class ToolSpec(BaseModel):
 TOOL_REGISTRY: dict[str, ToolSpec] = {
     "search_prs": ToolSpec(
         args_model=SearchPrsArgs,
-        permission=can_search_prs,
+        permission=check_search_prs,
         execute=search_prs,
     ),
     "get_slack_messages": ToolSpec(
         args_model=GetSlackMessagesArgs,
-        permission=can_get_slack_messages,
+        permission=check_get_slack_messages,
         execute=get_slack_messages,
     ),
     "fetch_gdrive_doc": ToolSpec(
         args_model=FetchGdriveDocArgs,
-        permission=can_fetch_gdrive_doc,
+        permission=check_fetch_gdrive_doc,
         execute=fetch_gdrive_doc,
     ),
 }
