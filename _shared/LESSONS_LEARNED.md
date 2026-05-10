@@ -171,6 +171,20 @@ HTTP method, route/path, actor, request body fingerprint 같은 request scope를
 
 ---
 
+### Mistake 9 — pytest에서 로컬 `src` 패키지를 못 찾음
+
+**무슨 일**: `uv run pytest tests/test_audit.py -v`가 `ModuleNotFoundError: No module named 'src'`로 collection 단계에서 실패했다.
+
+**왜 발생**: pytest 실행 시 프로젝트 루트가 import path에 명시되지 않아 테스트가 `src.main`을 찾지 못했다.
+
+**핵심 원인**: 단일 케이스 디렉터리를 독립 프로젝트처럼 실행하지만 패키지 설치 설정 없이 `src` 패키지를 직접 import했다.
+
+**다음에 할 것**:
+- 새 케이스 프로젝트를 만들 때 `pyproject.toml`에 `pythonpath = ["."]` pytest 설정을 먼저 둔다.
+- 가장 작은 회귀 테스트는 `uv run pytest tests/<new_test>.py -v` collection 성공이다.
+
+---
+
 ## Agent Prompt 필수 체크리스트 (Phase 3 시작 전)
 
 Agent A (routes + LLM) prompt에 반드시 포함할 것:
