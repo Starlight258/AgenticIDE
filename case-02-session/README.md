@@ -1,201 +1,189 @@
-# [Case Title]
+# case-02-session
 
-> [One line: what this service does and for whom — "DH-aware X that does Y before Z"]
->
-> [Second line: what it is NOT — "It is not a clone of X — it is the layer that…"]
+Glovo-aware AI code review service for deciding whether an LLM-generated patch is safe to merge.
 
----
+It is not a git apply or CI runner. It is the deterministic review layer between an agentic IDE and a developer's merge decision.
 
-## 1. Problem & Approach
+## Problem & Approach
 
-**What this replaces**: [the manual workflow this service eliminates — start with developer pain]
+Glovo developers currently read LLM-generated diffs, remember brand guardrails, and decide manually whether a patch is mergeable. This service turns that workflow into a stateful HTTP API:
 
-**Architecture**:
+- `POST /sessions` creates a review workspace.
+- `POST /sessions/{id}/plan` asks the LLM to split work into steps.
+- `POST /sessions/{id}/plan/{stepId}/patches` asks the LLM for one unified diff.
+- `POST /sessions/{id}/patches/{patchId}/check` runs deterministic G1-G5 checks.
+- `GET /sessions/{id}/plan/{stepId}/readiness` computes whether the latest patch can be considered merge-ready.
+- `POST /sessions/{id}/test-runs` records human or CI test evidence.
+- `GET /sessions/{id}` returns the nested session state.
 
-```
-[Request]
-    │
-    ▼
-[POST /X]
-  [deterministic input setup]                  ← deterministic
+The core architecture is a deterministic sandwich:
 
-[POST /X/{id}/Y]
-  [context loaded just-in-time]                ← deterministic
-  → LLM([model]): [what LLM does]             ← non-deterministic, schema-constrained
-  → [output validation]                        ← deterministic
-
-[POST /X/{id}/Z]
-  → [deterministic check]                      ← deterministic
-  → [gate decision]                            ← deterministic
-
-[GET /X/{id}]
-  → full state: [what's nested]
+```text
+Request
+  -> deterministic session, brand, and AGENTS.md context
+  -> LLM generates only PlanStepInput or PatchProposalInput
+  -> Pydantic validates the LLM payload
+  -> deterministic guardrails run from AGENTS.md severities
+  -> deterministic readiness is computed from stored checks
 ```
 
-[One sentence: what the LLM does vs what deterministic code decides.]
+The LLM proposes structure and diffs. The service owns validation, rule checks, readiness, audit state, ownership checks, idempotency, and test-run persistence.
 
-**Assumptions**:
-1. [storage scope] — [swap path if requirement changes]
-2. [context source] — [who owns it, how it's loaded]
-3. [severity semantics] — [what BLOCK/WARN/INFO means for merge]
-4. [LLM output contract] — [how output is validated before storage]
-5. [brand/tenant scope] — [what's currently supported vs extension path]
-6. [observability] — [what trace_id / logging covers now]
-7. [mock mode] — [what happens without real credentials]
+Assumptions:
 
-**Ambiguities I noticed**:
-1. [question 1 — what's unclear from the spec]
-2. [question 2]
-3. [question 3 — what you'd ask PM if you had more time]
+1. One session represents one developer's review workspace; cross-developer collaboration on the same patch is out of scope.
+2. `brand="glovo"` is the evaluated path; `Brand` already allows `efood` and `talabat` for extension.
+3. `AGENTS.md` is the runtime source of truth for rule severities, so guardrails read `glovo/AGENTS.md` when checks run.
+4. Patches are proposals, not applied git changes; failed proposals remain history and a new patch can be generated.
+5. `BLOCK` means not merge-ready, while `WARN` means review required but not an automatic readiness block.
+6. `trace_id` is generated per session and stored for future OTEL/export integration.
 
----
+## Domain Model
 
-## 2. Domain Model
-
-- `[Entity1]` — [one-line purpose]
-- `[Entity2]` — [one-line purpose]
-- `[Entity3]` — [one-line purpose]
-- `[Entity4]` — [one-line purpose]
-
-```
-[Entity1] 1—* [Entity2] 1—* [Entity3] 1—* [Entity4]
+```text
+Session 1 -> * PlanStep 1 -> * PatchProposal 1 -> * GuardrailCheck
+Session 1 -> * TestRun
+TestRun * -> * PatchProposal by patch_ids
+StepReadiness is computed, not stored
 ```
 
-[Severity or status ladder if applicable]: `[HIGH]` > `[MED]` > `[LOW]`.
-[One sentence on what the output feeds downstream — KPI, dashboard, metric.]
+- `Session`: the developer's review workspace, including `brand`, `owner_id`, `trace_id`, `steps`, and `test_runs`.
+- `PlanStep`: one LLM-created implementation step with target files.
+- `PatchProposal`: one LLM-created unified diff for a step, plus immutable check results and `version`.
+- `GuardrailCheck`: deterministic result for one rule, including `ruleId`, `severity`, `result`, and `reason`.
+- `TestRun`: reviewer or CI evidence for one or more patch IDs.
 
----
+Trust boundaries:
 
-## 3. Key Design Decisions
+| Boundary | Trusted input | Untrusted input | Service behavior |
+|---|---|---|---|
+| HTTP request | Auth actor header/token shape | User-provided IDs and payloads | FastAPI/Pydantic validation plus ownership checks |
+| LLM output | Tool schema name and expected shape | All generated plan text and diffs | Parse with Pydantic DTOs before storage |
+| Brand rules | `glovo/AGENTS.md` in repo | LLM claims about rule compliance | Re-read AGENTS.md and run regex checks in `guardrails.py` |
+| Readiness | Stored patch checks | LLM or user saying tests passed | Compute from latest patch and stored check results |
+| Tests | `TestRun.outcome` as reported evidence | Claim that it proves merge safety | Store as evidence, not as a readiness override |
 
-The hardest part of this problem was [X]. I considered three options:
+## AI Leverage
 
-### [Core hard problem — e.g. concurrency control / guardrail enforcement / consistency]
+| Area | AI does | Deterministic code does |
+|---|---|---|
+| Planning | Splits title and description into steps | Loads session/brand context and validates `PlanStepInput` |
+| Patch proposal | Produces a unified diff for one step | Stores proposal as a candidate, not an applied change |
+| Guardrails | No authority | Runs G1-G5 regex checks and reads severities from AGENTS.md |
+| Readiness | No authority | Uses latest patch by `created_at`, stored checks, and BLOCK count |
+| Test evidence | No authority | Stores reviewer or CI `TestRun` records |
+| Mock mode | Returns deterministic sample plan and diff when no API key exists | Keeps quickstart and tests runnable without `.env` |
 
-**Option 1 — [name]**
-[one sentence on how it works]
-Risk: [what breaks under this approach]
-
-**Option 2 — [name]**
-[one sentence on how it works]
-Risk: [what breaks under this approach]
-
-**Option 3 — [name]**
-[one sentence on how it works]
-Risk: [what breaks under this approach]
-
-**I chose Option [N]** because [correctness / simplicity / scope fit].
-The trade-off is [X], which is acceptable because [Y].
-I would reconsider if [Z].
-
-### [Second significant decision if applicable]
-
-[Same format — options considered, choice made, trade-off acknowledged]
-
----
-
-## 4. Trade-offs & Decisions
+## Trade-offs
 
 | Decision | Rationale | Reconsider if |
-|----------|-----------|---------------|
-| [storage choice] | [why — what it removes from critical path] | [when to swap] |
-| [deterministic vs LLM for X] | [why deterministic wins here] | [when LLM would be right] |
-| [scope cut] | [why this wasn't needed for spec] | [when to add it] |
-| [no auth] | [why out of scope] | [when staging/prod changes this] |
-| [SDK choice] | [why direct over framework] | [when to reconsider] |
-| [parallel worktrees] | [what was independent, what the benefit was] | [when branches diverge too much] |
+|---|---|---|
+| Readiness uses the latest patch by `created_at` | Developers expect the newest patch to be the candidate; using an older checked patch could mark a step READY while the latest intended patch was never checked. | The API adds an explicit `intended_patch_id` or merge-candidate marker. |
+| Patches are candidates, not applied changes | The service can review repeated AI attempts without mutating the real repository. | The product becomes a full merge bot with branch management. |
+| Checks are stored once | A check is an audit event for one diff at one point in time, so readiness reads stored evidence instead of recomputing silently. | AGENTS.md changes must trigger explicit recomputation. |
+| Optimistic lock via `version` | Contention is low because a session is a single developer workspace; CAS gives multi-worker safety without pessimistic lock overhead or Redis. | Patch mutation APIs or high-contention collaborative editing are added. |
+| Second `POST /check` returns 409 | POST creates a check event; if checks already exist, the second request conflicts with the existing event but returns the prior checks in the body. | The product wants `/check` to be a cache lookup instead of an event creation endpoint. |
+| Guardrails are regex-based | G1-G5 are concrete policy patterns that should be explainable and repeatable. | Rules require semantic code understanding across files. |
 
----
+### Decision 2: Readiness
 
-## 5. Edge Cases Considered
+Readiness intentionally uses the most recent patch by `created_at`, even if it has not been checked yet. That prevents a stale clean patch from hiding a newer unchecked patch that the developer actually intends to merge.
 
-- [primary race condition — e.g. two requests hitting same resource simultaneously]
-- [same-user duplicate request — idempotency]
-- [boundary overflow — e.g. capacity going negative]
-- [cascade effect — deleting X while Y is in progress]
-- [constraint interaction — e.g. credit limit + concurrent enrollment]
-- [config change during active operation — e.g. capacity modified mid-session]
+`NOT_READY` means one of three things:
 
-For [most critical case]: [one sentence on how the implementation handles it, or why it's explicitly out of scope with documented assumption].
+1. No patches exist for the step.
+2. The latest patch exists but has not been checked.
+3. The latest patch has at least one failed `BLOCK` check.
 
----
+Warnings do not block readiness because they represent review attention, not automatic merge rejection.
 
-## 6. AI Usage Log
+### Decision 7: Optimistic Locking
 
-I used AI as a reasoning partner, not only as a code generator.
+`PatchProposal.version` and `update_patch_if_version` implement compare-and-set around check creation. This fits the workload because the realistic race is a same-user double click or two tabs, not many developers competing for one shared counter.
 
-Example prompts I used during design:
-- "[question about failure modes — e.g. What race conditions can happen in X?]"
-- "[question that challenged my initial approach — e.g. Is Y-level locking enough if Z?]"
-- "[comparison prompt — e.g. Compare approach A and B for high-contention X]"
-- "[review prompt — e.g. Review my design for missing consistency issues]"
+The SQLite implementation updates only when `PatchProposalRow.version == expected_version`, then increments the version and stores checks in the same operation. That remains safe across workers sharing one database, while avoiding the cost and complexity of Redis or pessimistic row locks for a low-contention path.
 
-Every AI-generated file went through: `ruff check` → `uv run pytest` → manual diff scan.
-No AI output was committed without a test covering the specific behavior.
+### Decision 8: 409 Conflict
 
-The final decisions were reviewed and adjusted by me before implementation.
-I made the final design choices by comparing correctness, complexity, and assignment scope.
+`POST /check` creates a check event. Calling it again for the same patch conflicts with the stored event, so the service returns `409 checks_already_exist` with the existing checks included instead of silently pretending a new check was created.
 
-| Part | Verification |
-|------|--------------|
-| Domain models | Type-checked by Pydantic |
-| [File/component] | [how it was verified] |
-| [File/component] | [how it was verified] |
-| README | Cross-checked against route decorators, models, and tests |
+## Error Model
 
----
+| Case | Status | Error |
+|---|---:|---|
+| Missing session path ID | 404 | `session_not_found` |
+| Missing step path ID | 404 | `step_not_found` |
+| Missing patch path ID | 404 | `patch_not_found` |
+| Patch from another session in check path | 404 | `patch_not_found` |
+| TestRun body references unknown patch | 422 | `patch_not_found_in_payload` |
+| TestRun body references another session's patch | 422 | `patch_not_in_session` |
+| Duplicate `POST /check` | 409 | `checks_already_exist` |
+| Optimistic lock race | 409 | `version_conflict` |
 
-## 7. If More Time
+Path IDs use 404 because the addressed resource is unavailable in that URL. Body IDs use 422 when the JSON is syntactically valid but violates session semantics.
 
-- **[Feature 1]** → [one sentence on what it enables]
-- **[Feature 2]** → [one sentence]
-- **[Feature 3]** → [one sentence — show extension path is already designed in schema]
-- **[Observability]** → push `trace_id` spans to [monitoring system]; ties into [KPI]
-- **[Multi-tenant]** → `[field]` already in schema; add `[config file]` per tenant — no route changes needed
+## Implementation Signals
 
----
+- `src/guardrails.py` reads `{brand}/AGENTS.md` at check time and falls back to built-in severities if the file is missing.
+- `PatchProposal.version` exists and `SessionRepository.update_patch_if_version` is used by `service._run_patch_checks`.
+- `src/llm.py` uses Anthropic tool calling with `tool_choice={"type": "tool", "name": "output"}` and does not parse LLM text with `json.loads`.
+- `PlanStepOut` excludes `patches`; `PatchProposalOut` excludes `checks`, so response shapes reflect the workflow stage.
+- `glovo/sample_diff.patch` is the mock patch, so the default demo triggers G1-G5 without external credentials.
+
+## If More Time
+
+- **SQLite hardening**: add migrations, indexes for session/step/patch lookups, and a documented cleanup policy for old sessions.
+- **OTEL**: export `trace_id`, LLM latency, guardrail outcomes, and readiness transitions as spans and metrics.
+- **Multi-brand**: add brand-specific rule modules and AGENTS.md fixtures for `efood` and `talabat`, while keeping the same API shape.
+- **LLM-as-judge**: add an advisory semantic review layer after deterministic checks, but never let it override BLOCK rules directly.
+- **Explicit recompute**: add `POST /patches/{id}/checks/recompute` or delete-then-check semantics when AGENTS.md changes.
 
 ## How to Run
 
+No `.env` file is required. If `ANTHROPIC_API_KEY` is absent, the app automatically uses the built-in mock plan and mock patch. If the key is present, `src/llm.py` calls the configured Anthropic model.
+
 ```bash
 uv sync
-cp .env.example .env          # set [API_KEY_VAR] (or leave blank for mock mode)
-uv run pytest                 # all tests green
-uv run uvicorn src.main:app --reload
-# → http://localhost:8000/docs
+uv run pytest
+uv run fastapi dev src/main.py
+```
+
+Open:
+
+```text
+http://localhost:8000/docs
 ```
 
 Healthcheck:
+
 ```bash
-curl localhost:8000/health
-# {"status":"ok"}
+curl -s localhost:8000/health
 ```
 
-Full workflow:
+Minimal glovo workflow:
 
 ```bash
-# 1. [first step]
-RESOURCE=$(curl -s -X POST localhost:8000/[endpoint] \
+SESSION_ID=$(curl -s -X POST localhost:8000/sessions \
+  -H "Authorization: Bearer demo" \
   -H "Content-Type: application/json" \
-  -d '[payload]' \
+  -d '{"title":"Charge endpoint","description":"Add charge handler","brand":"glovo"}' \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
 
-# 2. [second step]
-SUB=$(curl -s -X POST localhost:8000/[endpoint]/$RESOURCE/[sub] \
+STEP_ID=$(curl -s -X POST localhost:8000/sessions/$SESSION_ID/plan \
+  -H "Authorization: Bearer demo" \
   | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['id'])")
 
-# 3. [key step — the one that demonstrates the core behavior]
-curl -s -X POST localhost:8000/[endpoint]/$RESOURCE/[check] \
+PATCH_ID=$(curl -s -X POST localhost:8000/sessions/$SESSION_ID/plan/$STEP_ID/patches \
+  -H "Authorization: Bearer demo" \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
+
+curl -s -X POST localhost:8000/sessions/$SESSION_ID/patches/$PATCH_ID/check \
+  -H "Authorization: Bearer demo" \
   | python3 -m json.tool
 
-# 4. full state
-curl -s localhost:8000/[endpoint]/$RESOURCE | python3 -m json.tool
+curl -s localhost:8000/sessions/$SESSION_ID/plan/$STEP_ID/readiness \
+  -H "Authorization: Bearer demo" \
+  | python3 -m json.tool
 ```
 
-## Tested Working
-
-- `GET /health` → `{"status": "ok"}`
-- `POST /[create]` → [what it returns]
-- `POST /[core action]` → [what it demonstrates — the main feature]
-- `POST /[check/guardrail]` → [what violations look like]
-- `GET /[full state]` → [nested structure confirmed]
+Expected mock behavior for `brand="glovo"`: the sample patch fails G1, G2, G3, G4, and G5, so readiness is `NOT_READY`.
