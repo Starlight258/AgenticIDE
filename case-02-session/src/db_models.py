@@ -40,6 +40,7 @@ class PatchProposalRow(SQLModel, table=True):
     step_id: UUID = Field(foreign_key="plan_steps.id")
     brand: str
     diff: str
+    version: int = Field(default=0)
     status: str = Field(default="pending")
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -53,6 +54,20 @@ class GuardrailCheckRow(SQLModel, table=True):
     severity: str
     result: str
     reason: str
+
+
+class TestRunRow(SQLModel, table=True):
+    __tablename__ = "test_runs"
+
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    session_id: UUID = Field(foreign_key="sessions.id")
+    patch_ids: str = Field(default="[]")  # JSON-encoded list[UUID]
+    outcome: str
+    notes: str = Field(default="")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+    def get_patch_ids(self) -> list[UUID]:
+        return [UUID(value) for value in json.loads(self.patch_ids)]
 
 
 class AuditEventRow(SQLModel, table=True):

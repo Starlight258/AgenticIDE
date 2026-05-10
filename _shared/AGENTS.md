@@ -24,6 +24,17 @@
 
 When implementing an assignment or take-home case, read
 `_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md` before coding.
+Also read `_shared/LESSONS_LEARNED.md` before making implementation changes.
+
+## Bug Learning Log
+
+When a bug is discovered, reproduced, or fixed, append a concise entry to
+`_shared/LESSONS_LEARNED.md` before finishing the task. Use the existing format:
+`무슨 일`, `왜 발생`, `핵심 원인`, and `다음에 할 것`. Include the smallest
+regression test or guardrail that would have caught it. Before adding a new
+entry, check whether the same root cause or prevention already exists; if it
+does, do not add a duplicate. If needed, update the existing entry with one
+short sentence instead. Keep new entries concise, ideally under 20 lines.
 
 Apply its Production Hardening Tiers:
 - Tier 1 is required before staging.

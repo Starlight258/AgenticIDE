@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.db_models import (
@@ -15,8 +15,9 @@ from src.db_models import (
     PatchProposalRow,
     PlanStepRow,
     SessionRow,
+    TestRunRow,
 )
-from src.models import GuardrailCheck, PatchProposal, PlanStep, Session
+from src.models import GuardrailCheck, PatchProposal, PlanStep, Session, TestRun
 
 
 class SQLiteRepository:
@@ -80,6 +81,7 @@ class SQLiteRepository:
                         step_id=patch_row.step_id,
                         brand=patch_row.brand,
                         diff=patch_row.diff,
+                        version=patch_row.version,
                         checks=checks,
                         created_at=patch_row.created_at,
                     )
@@ -94,6 +96,21 @@ class SQLiteRepository:
                 )
             )
 
+        test_runs_result = await self._db.execute(
+            select(TestRunRow).where(TestRunRow.session_id == session_id)
+        )
+        test_runs = [
+            TestRun(
+                id=row.id,
+                session_id=row.session_id,
+                patch_ids=row.get_patch_ids(),
+                outcome=row.outcome,
+                notes=row.notes,
+                created_at=row.created_at,
+            )
+            for row in test_runs_result.scalars().all()
+        ]
+
         return Session(
             id=row.id,
             title=row.title,
@@ -102,6 +119,7 @@ class SQLiteRepository:
             trace_id=row.trace_id,
             owner_id=row.owner_id,
             steps=steps,
+            test_runs=test_runs,
             created_at=row.created_at,
         )
 
@@ -118,12 +136,14 @@ class SQLiteRepository:
             delete(PlanStepRow).where(PlanStepRow.session_id == session_id)
         )
         for step in steps:
-            self._db.add(PlanStepRow(
-                id=step.id,
-                session_id=session_id,
-                description=step.description,
-                target_files=json.dumps(step.target_files),
-            ))
+            self._db.add(
+                PlanStepRow(
+                    id=step.id,
+                    session_id=session_id,
+                    description=step.description,
+                    target_files=json.dumps(step.target_files),
+                )
+            )
         await self._db.commit()
         return steps
 
@@ -148,13 +168,16 @@ class SQLiteRepository:
     ) -> Optional[PatchProposal]:
         if await self.find_step(session_id, patch.step_id) is None:
             return None
-        self._db.add(PatchProposalRow(
-            id=patch.id,
-            step_id=patch.step_id,
-            brand=patch.brand,
-            diff=patch.diff,
-            created_at=patch.created_at,
-        ))
+        self._db.add(
+            PatchProposalRow(
+                id=patch.id,
+                step_id=patch.step_id,
+                brand=patch.brand,
+                diff=patch.diff,
+                version=patch.version,
+                created_at=patch.created_at,
+            )
+        )
         await self._db.commit()
         return patch
 
@@ -183,6 +206,7 @@ class SQLiteRepository:
             step_id=row.step_id,
             brand=row.brand,
             diff=row.diff,
+            version=row.version,
             checks=checks,
             created_at=row.created_at,
         )
@@ -218,15 +242,74 @@ class SQLiteRepository:
             delete(GuardrailCheckRow).where(GuardrailCheckRow.patch_id == patch_id)
         )
         for check in checks:
-            self._db.add(GuardrailCheckRow(
-                patch_id=patch_id,
-                rule_id=check.ruleId,
-                severity=check.severity,
-                result=check.result,
-                reason=check.reason,
-            ))
+            self._db.add(
+                GuardrailCheckRow(
+                    patch_id=patch_id,
+                    rule_id=check.ruleId,
+                    severity=check.severity,
+                    result=check.result,
+                    reason=check.reason,
+                )
+            )
         await self._db.commit()
         return checks
+
+    async def update_patch_if_version(
+        self,
+        patch_id: UUID,
+        expected_version: int,
+        checks: list[GuardrailCheck],
+    ) -> bool:
+        result = await self._db.execute(
+            update(PatchProposalRow)
+            .where(
+                PatchProposalRow.id == patch_id,
+                PatchProposalRow.version == expected_version,
+            )
+            .values(version=expected_version + 1)
+        )
+        if result.rowcount != 1:
+            await self._db.rollback()
+            return False
+
+        await self._db.execute(
+            delete(GuardrailCheckRow).where(GuardrailCheckRow.patch_id == patch_id)
+        )
+        for check in checks:
+            self._db.add(
+                GuardrailCheckRow(
+                    patch_id=patch_id,
+                    rule_id=check.ruleId,
+                    severity=check.severity,
+                    result=check.result,
+                    reason=check.reason,
+                )
+            )
+        await self._db.commit()
+        return True
+
+    async def save_test_run(
+        self, session_id: UUID, test_run: TestRun
+    ) -> Optional[TestRun]:
+        result = await self._db.execute(
+            select(SessionRow).where(SessionRow.id == session_id)
+        )
+        if result.scalar_one_or_none() is None:
+            return None
+        self._db.add(
+            TestRunRow(
+                id=test_run.id,
+                session_id=session_id,
+                patch_ids=json.dumps(
+                    [str(patch_id) for patch_id in test_run.patch_ids]
+                ),
+                outcome=test_run.outcome,
+                notes=test_run.notes,
+                created_at=test_run.created_at,
+            )
+        )
+        await self._db.commit()
+        return test_run
 
     async def log_audit(
         self,
@@ -240,17 +323,19 @@ class SQLiteRepository:
         tokens_input: int = 0,
         tokens_output: int = 0,
     ) -> None:
-        self._db.add(AuditEventRow(
-            trace_id=trace_id,
-            actor=actor,
-            action=action,
-            resource_type=resource_type,
-            resource_id=resource_id,
-            prompt=prompt,
-            response=response,
-            tokens_input=tokens_input,
-            tokens_output=tokens_output,
-        ))
+        self._db.add(
+            AuditEventRow(
+                trace_id=trace_id,
+                actor=actor,
+                action=action,
+                resource_type=resource_type,
+                resource_id=resource_id,
+                prompt=prompt,
+                response=response,
+                tokens_input=tokens_input,
+                tokens_output=tokens_output,
+            )
+        )
         await self._db.commit()
 
     async def get_idempotency(self, key: str) -> Optional[str]:

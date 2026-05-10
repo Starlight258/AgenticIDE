@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from src.deps import get_llm, get_repo, get_settings
@@ -10,6 +12,13 @@ _MOCK_PLAN = [
     PlanStepInput(
         description="Implement deterministic guardrail evaluation",
         target_files=["src/guardrails.py", "tests/test_guardrails.py"],
+    )
+]
+
+_GLOVO_PLAN = [
+    PlanStepInput(
+        description="Add payment charge handler",
+        target_files=["payments/charge.py"],
     )
 ]
 
@@ -37,6 +46,8 @@ class FakeLLM:
         description: str,
         brand: Brand,
     ) -> list[PlanStepInput]:
+        if brand == "glovo":
+            return _GLOVO_PLAN
         return _MOCK_PLAN
 
     async def create_patch(
@@ -44,6 +55,8 @@ class FakeLLM:
         step: PlanStepInput,
         brand: Brand,
     ) -> PatchProposalInput:
+        if brand == "glovo":
+            return PatchProposalInput(diff=Path("glovo/sample_diff.patch").read_text())
         return _MOCK_PATCH
 
 
@@ -58,6 +71,7 @@ def reset_repo():
 def override_dependencies():
     """Override DI to use InMemoryRepository and test Settings."""
     from src.config import Settings
+
     test_settings = Settings(anthropic_api_key="", env="test")
 
     app.dependency_overrides[get_repo] = lambda: _repo

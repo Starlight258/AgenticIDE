@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from typing import Annotated
 
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.config import Settings, get_settings
@@ -44,14 +44,17 @@ class IdempotencyContext:
 
 
 async def get_idempotency(
+    request: Request,
     repo: RepoDepend,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
 ) -> IdempotencyContext:
     if idempotency_key:
-        cached = await repo.get_idempotency(idempotency_key)
+        scoped_key = f"{request.method} {request.url.path}:{idempotency_key}"
+        cached = await repo.get_idempotency(scoped_key)
         if cached is not None:
-            return IdempotencyContext(key=idempotency_key, cached=cached)
-    return IdempotencyContext(key=idempotency_key, cached=None)
+            return IdempotencyContext(key=scoped_key, cached=cached)
+        return IdempotencyContext(key=scoped_key, cached=None)
+    return IdempotencyContext(key=None, cached=None)
 
 
 IdemDepend = Annotated[IdempotencyContext, Depends(get_idempotency)]
