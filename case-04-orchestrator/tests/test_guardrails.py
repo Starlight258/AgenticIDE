@@ -45,7 +45,9 @@ def test_clean_patch_all_pass() -> None:
     assert {check.result for check in checks} == {"pass"}
 
 
-def test_agents_md_drives_severity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_agents_md_drives_severity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     brand_dir = tmp_path / "efood"
     brand_dir.mkdir()
     (tmp_path / "AGENTS.md").write_text("- R1 WARN: Absolute imports only\n")

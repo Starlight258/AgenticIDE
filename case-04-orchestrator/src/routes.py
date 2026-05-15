@@ -1,15 +1,21 @@
 """HTTP routes for job orchestration."""
 
+import asyncio
+import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
 
-from src.models import Job, Task
+from src.guardrails import run_checks
+from src.models import AgentResult, GuardrailCheck, Job, Task
 from src.schemas import DispatchOut, JobCreate, JobCreatedOut, JobOut, PROut, TaskOut
 from src.store import jobs, lock
 
 router = APIRouter()
+executor = ThreadPoolExecutor(max_workers=5)
+TERMINAL_TASK_STATUSES = {"ready", "blocked", "failed"}
 
 
 def _error(status_code: int, code: str) -> HTTPException:
@@ -67,6 +73,103 @@ def _create_worktree(repo_path: str, worktree_path: Path, branch: str) -> None:
     )
 
 
+def _run_claude(task: Task) -> None:
+    subprocess.run(
+        ["claude", "-p", task.issue],
+        cwd=task.worktree_path,
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=300,
+    )
+
+
+def _collect_diff(task: Task) -> AgentResult:
+    if task.worktree_path is None:
+        return AgentResult(diff="", files=[])
+    diff = subprocess.run(
+        ["git", "diff"],
+        cwd=task.worktree_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    ).stdout
+    files = subprocess.run(
+        ["git", "diff", "--name-only"],
+        cwd=task.worktree_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    return AgentResult(diff=diff, files=files)
+
+
+def _refresh_job_status(job: Job) -> None:
+    statuses = {task.status for task in job.tasks}
+    if not statuses <= TERMINAL_TASK_STATUSES:
+        return
+    job.status = "done" if statuses <= {"ready"} else "partial_failure"
+
+
+def _finish_task(job_id: str, task_id: str) -> None:
+    with lock:
+        job = jobs[job_id]
+        task = _get_task(job, task_id)
+        task.status = "running"
+    try:
+        _run_claude(task)
+        result = _collect_diff(task)
+        checks = run_checks(result.diff, job.brand)
+        task_status = "blocked" if _has_blocking_failure(checks) else "ready"
+    except (subprocess.SubprocessError, FileNotFoundError) as exc:
+        result = _collect_diff(task)
+        checks = []
+        task_status = "failed"
+        result.diff = result.diff or str(exc)
+    with lock:
+        task.result = result
+        task.diff = result.diff
+        task.checks = checks
+        task.status = task_status
+        _refresh_job_status(job)
+
+
+def _has_blocking_failure(checks: list[GuardrailCheck]) -> bool:
+    return any(check.severity == "BLOCK" and check.result == "fail" for check in checks)
+
+
+def _schedule_task(job_id: str, task_id: str) -> None:
+    loop = asyncio.get_running_loop()
+    loop.run_in_executor(executor, _finish_task, job_id, task_id)
+
+
+def _create_pr(task: Task) -> str:
+    if task.worktree_path is None:
+        return f"https://github.com/local/orchestrator/pull/{task.branch}"
+    result = subprocess.run(
+        ["gh", "pr", "create", "--fill"],
+        cwd=task.worktree_path,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode == 0 and result.stdout.strip():
+        return result.stdout.strip().splitlines()[-1]
+    return f"https://github.com/local/orchestrator/pull/{task.branch}"
+
+
+def _remove_worktree(worktree_path: str | None) -> None:
+    if worktree_path is None:
+        return
+    subprocess.run(
+        ["git", "worktree", "remove", worktree_path],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    shutil.rmtree(worktree_path, ignore_errors=True)
+
+
 @router.post("/jobs", response_model=JobCreatedOut, status_code=status.HTTP_201_CREATED)
 def create_job(payload: JobCreate) -> JobCreatedOut:
     tasks = [Task(issue=issue) for issue in payload.issues]
@@ -86,7 +189,7 @@ def create_job(payload: JobCreate) -> JobCreatedOut:
     response_model=DispatchOut,
     status_code=status.HTTP_202_ACCEPTED,
 )
-def dispatch_job(job_id: str) -> DispatchOut:
+async def dispatch_job(job_id: str) -> DispatchOut:
     with lock:
         job = _get_job(job_id)
         if job.status != "pending":
@@ -99,6 +202,7 @@ def dispatch_job(job_id: str) -> DispatchOut:
         _create_worktree(job.repo_path, path, branch)
         task.worktree_path = str(path)
         task.branch = branch
+        _schedule_task(job.id, task.id)
 
     return DispatchOut(
         job_id=job.id,
@@ -126,10 +230,12 @@ def create_pr(job_id: str, tid: str) -> PROut:
     if task.pr_url is not None:
         raise _error(status.HTTP_409_CONFLICT, "pr_already_exists")
     if task.status != "ready":
-        raise _error(status.HTTP_422_UNPROCESSABLE_ENTITY, "task_not_ready")
+        raise _error(422, "task_not_ready")
 
     branch = task.branch or _branch_name(job.id, job.tasks.index(task))
-    task.pr_url = f"https://github.com/local/orchestrator/pull/{branch}"
+    task.branch = branch
+    task.pr_url = _create_pr(task)
     removed_path = task.worktree_path
+    _remove_worktree(removed_path)
     task.worktree_path = None
     return PROut(pr_url=task.pr_url, branch=branch, worktree_path=removed_path)
