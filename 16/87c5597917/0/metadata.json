@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "1687c5597917",
+  "session_id": "ee9631e7-6053-420a-ba27-87c29949875e",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-15T12:57:11.224355Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "04fcc1bad317",
+  "token_usage": {
+    "input_tokens": 5341,
+    "cache_creation_tokens": 122124,
+    "cache_read_tokens": 3779048,
+    "output_tokens": 44521,
+    "api_call_count": 41
+  },
+  "session_metrics": {
+    "turn_count": 19
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 379,
+      "user_lines_removed": 0,
+      "agent_lines_added": 101,
+      "agent_lines_removed": 57,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 52,
+        "_shared/fastapi-patterns.md": 45,
+        "_shared/todo_list.md": 265,
+        "case-01-session-backend/.claude/settings.local.json": 7,
+        "case-03-context/.claude/settings.local.json": 10
+      }
+    }
+  ]
+}
