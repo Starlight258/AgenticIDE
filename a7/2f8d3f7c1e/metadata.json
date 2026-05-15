@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "a72f8d3f7c1e",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 19,
+  "files_touched": [
+    "case-04-orchestrator/.claude/agents/builder.md",
+    "case-04-orchestrator/.claude/agents/reviewer.md",
+    "case-04-orchestrator/.claude/agents/tester.md",
+    "case-04-orchestrator/.env.example",
+    "case-04-orchestrator/.gitignore",
+    "case-04-orchestrator/.python-version",
+    "case-04-orchestrator/AGENTS.md",
+    "case-04-orchestrator/CODEX_PROMPTS.md",
+    "case-04-orchestrator/Makefile",
+    "case-04-orchestrator/README.md",
+    "case-04-orchestrator/SPEC.md",
+    "case-04-orchestrator/pyproject.toml",
+    "case-04-orchestrator/src/__init__.py",
+    "case-04-orchestrator/src/main.py",
+    "case-04-orchestrator/uv.lock"
+  ],
+  "sessions": [
+    {
+      "metadata": "/a7/2f8d3f7c1e/0/metadata.json",
+      "transcript": "/a7/2f8d3f7c1e/0/full.jsonl",
+      "content_hash": "/a7/2f8d3f7c1e/0/content_hash.txt",
+      "prompt": "/a7/2f8d3f7c1e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5341,
+    "cache_creation_tokens": 122124,
+    "cache_read_tokens": 3779048,
+    "output_tokens": 44521,
+    "api_call_count": 41
+  }
+}

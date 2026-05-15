@@ -1,0 +1,186 @@
+/assignment-design @_shared/todo_list.md 에서 git worktree 기반 멀티 에이전트 오케스트레이터 구현하기 어떤거같아?
+
+---
+
+1. 실제 에이전트 실행 포함, claude api는 있어 
+2. @case-04-orchestrator/ 에 만들어줘. 시간은 충분해 우선 설계부터 해줘
+
+---
+
+저 과제 먼저 설명해주라
+
+---
+
+그럼 결과 조회라는건 job이 진행중일때도 조회가능해?
+
+---
+
+claude -p 옵션이 뭐야?
+
+---
+
+응
+
+---
+
+고민중이야 둘 결정 말고 다른 결정도 있는지 궁금하고
+
+---
+
+결정 1은 mcp 말하는건가?  그리고 claude -p는 병렬로 돌릴 수 있어?
+
+---
+
+근데 tool_use는 mcp아니야?
+
+---
+
+결정 다 설명해줘
+
+---
+
+근데 결정 1은 1번이긴해 결정3은 a, 결정 4는 b이고 pr 올린다음에 맨 마지막에 삭제하는게 좋은거같아. 이거 workflow로 작성하는거야? 아니면 api인거야?
+
+---
+
+Antigravity같은걸 만들고싶어
+
+---
+
+근데 이건 agentic ide야?
+
+---
+
+오케이
+
+---
+
+응
+
+---
+
+그래도 물어보고 올리는게 좋을거같아. pr closed되면 쌓이니까 .. 넌 어떻게 생각해?
+
+---
+
+응
+
+---
+
+두 파일 다 읽었어. SPEC을 v6 기준으로 평가할게.
+
+---
+
+## 설계 평가 — case-04-orchestrator SPEC.md
+
+전체 인상: **뼈대는 잘 잡혔고, 면접용 JD Signal Map은 훌륭한 포석.** 근데 v6 기준으로 보면 빠진 레이어들이 꽤 있어. 하나씩.
+
+---
+
+### ✅ 잘 된 것들
+
+**§0 API Contract를 맨 위에 고정한 것** — 이건 진짜 좋은 습관이야. "SPEC의 다른 결정이 이 표와 충돌하면 이 표가 우선" 이 한 줄이 구현 중 잡음을 막아.
+
+**결정적 경계(Deterministic Boundary) 명시** — LLM이 처리하는 부분(claude -p)과 서비스가 직접 처리하는 부분을 색으로 나눈 다이어그램, 아키텍처 레벨에서 이걸 명시한 건 딱 봐도 채점자한테 좋게 읽혀.
+
+**JD Signal Map** — 면접 준비용 과제에서 이건 날카로운 포석이야. 코드에서 어느 줄에 어떤 JD 키워드가 보이는지 역추적 가능하게 만든 것. 준비 의도가 선명하게 드러남.
+
+**P0/P1/P2 스코프 규율** — 인증·SQLite·OTEL을 P2로 명시적으로 내린 것. 범위 규율이 있다는 걸 보여줌.
+
+**문제 정의 섹션** — WHO가 구체적이고 ("이슈 5개를 아침에 던지고 오후에 PR 5개를 리뷰하고 싶은 엔지니어"), LLM 비결정 구간과 외부 의존성도 분리해서 명시.
+
+---
+
+### ❌ 빠졌거나 약한 것들
+
+**1. HTTP 표준 체크 없음 (v6 최우선 누락)**
+
+API Contract가 §0에 있는데 정작 각 엔드포인트의 HTTP 표준 체크가 없어.
+
+- `POST /jobs/{id}/dispatch` — 이거 멱등하지 않은 액션인데, 같은 job을 두 번 dispatch 때리면 어떻게 돼? "pending 상태에서만 허용"이라고 리스크 테이블에 한 줄 박혀 있는데, *그 체크가 어떻게 구현되는지* 가 없어. DB read-then-write 사이에 race가 생기면? 두 요청이 동시에 "pending 확인" 통과하는 시나리오.
+- 성공/실패 status code 매핑이 아예 없어. `POST /jobs` → 201? 200? `POST /dispatch` 시 이미 dispatched면 409? 422? 이게 표준 체크.
+- Error response body 형식 없음. RFC 7807 Problem Details가 default인데.
+
+**2. 동시성 주체 분석 없음**
+
+동시 요청 받는 주체가 누구야? 이게 분석 안 됐어.
+
+- 엔지니어 여러 명이 각자 Job을 만들고 dispatch 때리는 건 괜찮아 (job이 분리되니까).
+- 근데 **같은 job에 두 번 dispatch**가 날아오면? 리스크 테이블에 "중복 방지"라고 적혔는데, 방지하는 메커니즘이 없어. `if job.status == "pending"` 체크 → `update status = "dispatched"` — 이 사이에 두 요청이 끼어들면? in-memory store면 read-modify-write가 non-atomic.
+- 이게 (b) 주체별 제약 락 분석이 없는 거야.
+
+**3. ThreadPoolExecutor 선택에 후보 비교 없음**
+
+결정 2에서 "subprocess.run이 blocking이라 run_in_executor 씀"이라고 썼는데, 이게 선택지 정리 없이 결론만 있어.
+
+실제 후보는 최소 세 갈래야:
+- `asyncio.create_subprocess_exec` — blocking 없이 await 가능, 이건 왜 안 골랐어?
+- `ThreadPoolExecutor + run_in_executor` — 현재 선택
+- Celery / background task queue — 과제 범위 밖이긴 한데, 왜 P2에도 안 올라갔는지 언급이 없어
+
+"asyncio.create_subprocess_exec 대신 ThreadPoolExecutor 고른 이유"가 한 줄이라도 있어야 해. 안 그러면 "asyncio.subprocess 몰라서 thread 썼나?" 로 읽힐 수 있어.
+
+**4. 가정 셋 없음**
+
+모든 결정에 전제 가정 + 가정이 깨질 시나리오 + 그때 다음 행동이 있어야 해. 지금 결정 1~5 어디에도 이 세트가 없어.
+
+예를 들어 결정 1(claude -p subprocess)에:
+- 전제 가정: claude CLI가 설치된 환경에서만 실행됨, subprocess timeout 5분 내 완료
+- 가정 깨질 시나리오: 복잡한 이슈에서 claude -p가 5분 초과하는 케이스
+- 그때 다음 행동: partial result 수거 + task.status = "failed" + 재실행 엔드포인트 추가?
+
+이게 없으면 "작동하는 케이스만 생각했다"로 보여.
+
+**5. 검증 가능성 섹션 없음**
+
+다음 6개 중 어떻게 검증할지 언급이 없어:
+- 반복성 (같은 이슈 넣으면 구조적으로 같은 흐름인지)
+- 진짜 동시성 보장 (ThreadPool로 정말 병렬 실행되는지 시연 방법)
+- BLOCK/READY 판정의 정확성
+- claude -p 없는 환경에서 테스트하는 방법 (mock? stub?)
+- PASS-FAIL 한 줄 기준
+
+pytest green이 P0에 있는데, 어떤 시나리오를 테스트하는지가 없어.
+
+**6. blocked 태스크의 생명주기**
+
+결정 4에서 "가드레일 통과해도 로직 오류 있을 수 있어서 엔지니어 확인 후 PR"이라고 했는데, **blocked된 태스크는 어떻게 돼?**
+
+- 엔지니어가 blocked task를 직접 수정해서 재실행할 수 있어?
+- 아니면 그냥 버려?
+- worktree는 언제 삭제돼?
+
+이게 "안 만들기로 한 것" 섹션에 명시적으로 있어야 해.
+
+---
+
+### 우선순위
+
+| 급함 | 항목 |
+|---|---|
+| 즉시 | `POST /dispatch` race condition 처리 방식 명시 (optimistic lock? DB atomic update?) |
+| 즉시 | HTTP status code 매핑 추가 (§0 Contract에 한 열 추가) |
+| 구현 전 | asyncio.create_subprocess_exec vs ThreadPoolExecutor 선택 이유 한 줄 |
+| 구현 전 | 결정 1~5에 가정 셋 추가 |
+| 있으면 좋음 | 검증 가능성 섹션 (E2E 시연 스크립트 + PASS 기준) |
+| 있으면 좋음 | blocked task 생명주기 + "안 만들기로 한 것" 명시 |
+
+---
+
+**한 줄 요약**: JD 매핑과 deterministic boundary 명시가 이 SPEC의 강점인데, HTTP 표준 체크와 동시성 주체 분석이 빠져있어서 v6 기준으로는 절반짜리야. dispatch race랑 status code 매핑부터 채우면 확 달라질 거야.
+
+---
+
+응 그리고 main에 push해줘
+
+---
+
+얼릉 해
+
+---
+
+continue
+
+---
+
+나 이제 가야돼
