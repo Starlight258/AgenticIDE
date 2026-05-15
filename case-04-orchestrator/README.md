@@ -1,275 +1,188 @@
-# README Writing Rules
+# Worktree Orchestrator
 
-Rules for writing take-home assignment READMEs. Template is below.
+This service lets an engineer dispatch one job into isolated coding tasks, then review each task before opening a PR. Not a Cursor clone. It coordinates Claude Code, git worktrees, and AGENTS.md rules around an existing repository.
 
----
+## 1. Problem & Approach
 
-## Rules Before You Write
-
-### Remove AI smell
-
-1. **No coined terms**: if you can't defend the word in an interview, don't use it. Use verbs instead. ❌ "deterministic sandwich" → ✅ "the LLM is wrapped on both sides by deterministic code"
-2. **No lists longer than 3 items in a sentence**: listing 7 things is an AI pattern. Stop at 3; move the rest to a table or delete if already covered by a diagram.
-3. **No hedge language**: replace vague softeners with direct verbs. ❌ "instead of silently pretending a new check was created" → ✅ "instead of returning a fake new check"
-4. **Introduce jargon once, then use the abbreviation**: define it on first use, either inline or as a note. After that, use the short form freely. ❌ "checks the stored version before saving; if another request changed it first, returns 409" → ✅ "CAS (Compare-And-Swap) on `version`; if another request changed it first, returns 409", then use "CAS" freely after that. Dropping jargon entirely can make things *more* confusing, not less.
-5. **No awkward translations**: write naturally. ❌ "`brand="glovo"` is the evaluated path" → ✅ "currently implemented for `brand="glovo"`"
-
-### Cut duplication
-
-6. **Never repeat what a diagram already shows**: if it's in the diagram, don't restate it in prose below.
-7. **No "Implementation Signals" section**: reviewers read the code. Don't list files and say "look here", that is not a README section.
-8. **Table rows and subsections must not say the same thing twice**: if a decision is in the Other decisions table, don't also give it a `###` subsection. Pick one.
-
-### Structure
-
-9. **Trust Boundaries: 5-6 rows max**: merge rows that repeat the same idea from different angles. Mock mode and dev tooling are not trust boundaries, leave them out.
-10. **Trust Boundaries AI role column: use "None" for everything AI does not control**: don't split into "None" vs "Not involved", that distinction confuses readers. Use "None" uniformly.
-11. **No decision numbering**: name headings by what they decide. ❌ "### Decision 2: Readiness" → ✅ "### Readiness, which patch is the merge candidate?"
-12. **Significant decisions need an options table**: showing alternatives is what makes it a trade-off. A decision with no alternatives is just a statement.
-13. **Options table: options as rows, criteria as columns**: ❌ options as columns (table breaks when you add a third option) → ✅ options as rows with "How it works" and "Risk" as columns. Easier to scan and extend.
-14. **How to Run opener is one sentence**: credentials present vs absent, nothing more.
-15. **Show Swagger URL explicitly**: don't make the reader guess. Add `http://localhost:PORT/docs` after the run command.
-16. **Second line of the title says what it is NOT**: makes scope immediately clear. Use two sentences, not a dash. ❌ "Not a git apply, the safety check between..." → ✅ "Not a git apply or CI runner. The safety check between..."
-17. **No `:` after headings**: h2/h3 already signals a section. No `:` mid-sentence either (e.g. "it means:" → "it means one of three things").
-18. **No `—` em dash and no `-` hyphen for mid-sentence pauses**: restructure with a period, comma, or parentheses. ❌ "the LLM is wrapped on both sides by deterministic code — it only produces structured output" → ✅ "the LLM is wrapped on both sides by deterministic code. It only produces structured output." Bullet labels and ID-like compounds (e.g. `Compare-And-Swap`) keep the hyphen.
-
-### Tone, Professional / Article-style
-
-Target tone is the Delivery Hero tech blog (e.g. "From Manual Coding to AI Orchestration"), formal-professional and structured. Velocity-first internal-note style is not the target.
-
-19. **Active voice with strong verb subjects**: start sentences with the actor, not "There is" / "It is" / "This is".
-    - ❌ "There are three design decisions in this service"
-    - ✅ "Three decisions shaped this design"
-    - ❌ "It is important to validate input before storage"
-    - ✅ "The service validates input before storage"
-
-20. **"We" or omitted subject, never passive voice**: pick one consistent voice and avoid `is/was/are/were + past participle by`.
-    - ❌ "Redis was chosen for persistence guarantees"
-    - ✅ "We chose Redis for its persistence guarantees"
-
-21. **Logical connectors between sentences**: use Firstly / Furthermore / However / Subsequently / Therefore / Finally to show flow. One connector per paragraph maximum, overuse signals AI text.
-
-22. **Bullets explaining concepts are complete sentences**: telegraphic bullets are for command sequences (How to Run), not for design rationale.
-    - ❌ "- Faster reads / - Less memory / - Easier debugging"
-    - ✅ "- **Faster reads**: the in-memory lookup avoids a network round trip"
-
-23. **Restrained adjectives**: use `significant`, `competitive`, `careful`, `consistent`, `robust`, `effective`, `comprehensive`. Avoid `amazing`, `great`, `super`, `really`, `very`, `cutting-edge`, `sophisticated`.
-
-24. **Section opener sets up what follows**: one sentence at the top of each major section that frames the rest. Design Decisions opens with "Three decisions shaped this design." Error Model opens with "Errors follow the 404 / 422 / 409 conventions."
-
-25. **No contractions in body prose**: use "do not", "cannot", "will not" in narrative paragraphs. Contractions are acceptable in code comments and inline command examples.
-
-26. **Concrete numbers over vague quantifiers**: replace "many", "several", "a lot of" with actual counts.
-    - ❌ "many tests cover this behavior"
-    - ✅ "12 tests cover this behavior"
-
-27. **Verbs over abstract nouns**: replace nominalizations (`-tion`, `-ment`, `-ness`) with the underlying verb.
-    - ❌ "Implementation of validation is performed before storage"
-    - ✅ "The service validates before storing"
-
-### Correctness, check before submitting
-
-28. **Every claim in README must match the actual assignment spec**: before finalizing, open the original assignment email/doc and verify each section against it line by line. README G1-G5 descriptions, entity names, endpoint paths, and severity labels must match what the spec and code actually say, not what you assumed or what a previous draft had. If you did not write the code yourself, read the relevant files before writing about them.
-29. **Don't use SQLite as the "If More Time" target**: SQLite is a local convenience choice, not a production direction. Point to MySQL or PostgreSQL via docker-compose instead.
-30. **"Bearer demo" belongs in If More Time**: hardcoded tokens are a known gap. Call it out and say what real auth would look like (JWT or API key validation).
-
-### Diagrams
-
-31. **Architecture diagrams must be Excalidraw or Mermaid**: no text diagrams (`->`, `|`, `+--+`). Ask Coco to draw it.
-    - Excalidraw: for freeform flow or component layout
-    - Mermaid: for flowcharts, sequence diagrams, or state diagrams
-
----
-
-## Template
-
-### [Case Title]
-
-[One line, what this service does and for whom.] Not a [X]. [What it actually is, in one clause.]
-
----
-
-#### 1. Problem & Approach
-
-**What this replaces**: [the manual workflow this eliminates, one sentence, start with developer pain]
+**What this replaces**: Engineers no longer need to run five AI coding tasks one at a time in the same working directory.
 
 **API surface**
 
-- `POST /X`, [what it creates]
-- `POST /X/{id}/Y`, [what it triggers]
-- `GET /X/{id}`, [what it returns]
+- `POST /jobs` creates a job with `title`, `issues`, `repo_path`, and `brand`.
+- `POST /jobs/{id}/dispatch` creates one worktree per issue and starts agent work.
+- `GET /jobs/{id}` returns the full job state with task diffs and checks.
+- `GET /jobs/{id}/tasks/{tid}` returns one task.
+- `POST /jobs/{id}/tasks/{tid}/pr` opens a PR for a ready task and removes its worktree.
 
 **Architecture**
 
-[One sentence with verbs. e.g. "the LLM is wrapped on both sides by deterministic code. It only produces structured output, and the service owns everything else."]
+The service owns workflow state, worktree setup, subprocess execution, and guardrail results. Claude only edits inside task worktrees.
 
-[Ask Coco to draw this as a Mermaid flowchart or Excalidraw diagram. Do not write a text diagram.]
+```mermaid
+flowchart TD
+    ENG([엔지니어])
+    ENG --> J1
+
+    subgraph J1["POST /jobs → 201"]
+        A1["brand 검증\nrepo_path 존재 확인\nJob 생성 (status: pending)"]:::det
+    end
+
+    J1 --> J2
+
+    subgraph J2["POST /jobs/{id}/dispatch → 202"]
+        B0["threading.Lock\nstatus != pending → 409"]:::det
+        B1["이슈별 worktree 생성\ngit worktree add"]:::det
+        B2["ThreadPoolExecutor\nsubprocess claude -p per worktree"]:::llm
+        B3["git diff로 변경사항 수거"]:::det
+        B4["run_checks(diff, brand)\nAGENTS.md 기반 regex"]:::det
+        B5{"BLOCK 있나?"}:::det
+        B0 --> B1 --> B2 --> B3 --> B4 --> B5
+        B5 -->|있음| B6["status: blocked"]:::det
+        B5 -->|없음| B7["status: ready"]:::det
+    end
+
+    J2 --> J3
+
+    subgraph J3["GET /jobs/{id} → 200"]
+        C1["전체 상태 반환\ntasks → checks + diff (부분 결과 포함)"]:::det
+    end
+
+    J3 --> J4
+
+    subgraph J4["POST /tasks/{tid}/pr → 200"]
+        D1["status != ready → 422"]:::det
+        D2["gh pr create 실행"]:::det
+        D3["git worktree remove"]:::det
+        D1 --> D2 --> D3
+    end
+
+    classDef det fill:#e8f4f8,stroke:#2196F3,color:#000
+    classDef llm fill:#fff3e0,stroke:#FF9800,color:#000
+```
 
 **Assumptions**
 
-1. [session/storage scope], [swap path if requirement expands]
-2. [brand/tenant scope], [what's implemented now vs extension path]
-3. [config source and location], [where it lives and why, especially if non-standard]
-4. [LLM output contract], [how output is constrained before storage]
-5. [severity semantics], [what BLOCK/WARN means for the downstream gate]
-6. [observability], [what trace_id / logging covers now]
+1. In-memory storage fits a single review session. PostgreSQL should replace it when jobs need to survive process restarts.
+2. `brand` accepts `efood`, `glovo`, and `talabat`. The guardrail loader first checks `{brand}/AGENTS.md`, then root `AGENTS.md`.
+3. Claude CLI and GitHub CLI run on the same machine as the API server.
+4. A `BLOCK` guardrail failure makes a task `blocked`. `WARN` and `INFO` checks remain review evidence.
+5. `trace_id` identifies the job now and can later map to OpenTelemetry spans.
 
----
-
-#### 2. Domain Model
+## 2. Domain Model
 
 ```text
-[Entity1] 1—* [Entity2] 1—* [Entity3] 1—* [Entity4]
-[Entity1] 1—* [SideEntity]
-[ComputedThing] is computed, not stored
+Job has many Task records
+Task has one optional AgentResult
+Task has many GuardrailCheck records
 ```
 
-- `[Entity1]`, [one-line purpose, key fields]
-- `[Entity2]`, [one-line purpose]
-- `[Entity3]`, [one-line purpose, note if immutable]
-- `[Entity4]`, [one-line purpose]
-- `[SideEntity]`, [evidence-only, does not override downstream verdict]
+- `Job` groups issues for one repository and brand. It carries `status`, `trace_id`, and `created_at`.
+- `Task` represents one issue, one branch, and one worktree.
+- `AgentResult` stores the final diff and changed file list after Claude exits.
+- `GuardrailCheck` records one rule result with `ruleId`, `severity`, `result`, and `reason`.
 
-**Trust Boundaries** (5-6 rows max, merge similar rows, no mock mode row)
+**Trust Boundaries**
 
 | Boundary | AI role | Deterministic code role |
 |---|---|---|
-| [core LLM action] | [what LLM produces] | [what service validates/enforces] |
-| [second LLM action] | [what LLM produces] | [how output is stored/constrained] |
-| [guardrail / policy] | None | [what runs deterministically, how severity is sourced] |
-| [readiness / gate] | None | [how verdict is computed, what blocks it] |
-| [test evidence / side input] | None | [stored as evidence only, does not override verdict] |
-| [HTTP / config / auth] | None | [validation, ownership checks, config re-read, merge into one row] |
+| Task worktree | Claude edits files inside one isolated worktree. | The service creates the worktree and branch name. |
+| Dispatch race | None | `threading.Lock` protects the `pending` to `dispatched` transition. |
+| Guardrail policy | None | Regex checks run against diffs and severity comes from AGENTS.md. |
+| Readiness gate | None | Any failed `BLOCK` check makes the task `blocked`; otherwise it becomes `ready`. |
+| PR trigger | None | The API requires `ready`, calls `gh pr create`, and removes the worktree. |
+| HTTP state | None | FastAPI validates request bodies and returns fixed error codes. |
 
----
-
-#### 3. Design Decisions
+## 3. Design Decisions
 
 Three decisions shaped this design. Each involved a non-obvious trade-off.
 
-[Significant decisions get a subsection with an options table.
-Name headings by what they decide, not by a number.
-Everything else goes in the Other decisions table.
-Never list more than 3 items in a sentence, use a table instead.]
+### Parallel worktrees, how tasks avoid file conflicts
 
-##### [Decision name, e.g. "Readiness, which patch is the merge candidate?"]
-
-[One sentence on why this was non-obvious.]
+Running every issue in the original repository would serialize agent work or create edit conflicts.
 
 | | How it works | Risk |
 |---|---|---|
-| Option A: [name] | [one sentence] | [what breaks] |
-| Option B: [name] | [one sentence] | [what breaks] |
+| Option A: shared checkout | Every task runs in the same working directory. | Concurrent agents can overwrite each other. |
+| Option B: one worktree per task | Each issue gets a branch and a `wt-{job}` path. | Disk cleanup must happen after PR creation. |
 
-**Decision, Option [N].** [One or two sentences, the correctness argument. Name the assumption that makes the trade-off acceptable.]
+**Decision, Option B.** The service creates a separate worktree for each task. This keeps agent file writes isolated and leaves reviewable branches behind.
 
-[Any cascading rules or states that follow.]
+### Subprocess execution, how the API stays responsive
 
-##### [Second significant decision]
+`claude -p` blocks until the agent finishes, but the HTTP server must still answer polling requests.
 
-[Same format. Add a column if three options.]
+| | How it works | Risk |
+|---|---|---|
+| Option A: call `subprocess.run` in the route | The route waits for each task to finish. | One dispatch can block the event loop. |
+| Option B: use `ThreadPoolExecutor` through `run_in_executor` | The route schedules blocking work in threads and returns 202. | A large job can consume too many threads. |
 
-##### Other decisions
+**Decision, Option B.** The current executor uses five workers, which matches the intended morning batch size. A queue worker should replace it when job sizes grow.
+
+### Guardrails, when readiness gets decided
+
+Delaying checks would leave generated diffs without a merge gate.
+
+| | How it works | Risk |
+|---|---|---|
+| Option A: manual check endpoint | Reviewers trigger checks later. | A task can look ready before policy runs. |
+| Option B: automatic check after diff collection | Every finished task immediately receives R1 to R5 results. | The policy must stay deterministic and fast. |
+
+**Decision, Option B.** The dispatch flow collects `git diff`, runs `run_checks(diff, brand)`, and sets task status to `ready`, `blocked`, or `failed`.
+
+### Other decisions
 
 | Background | Options | Decision | Reason |
 |---|---|---|---|
-| [why this needed a decision] | [A vs B] | [chosen] | [one sentence] |
-| [why this needed a decision] | [A vs B] | [chosen] | [one sentence] |
+| Job state | In-memory dict vs database | In-memory dict | The assignment targets one process and documents the persistence swap path. |
+| PR timing | Automatic PR vs explicit endpoint | Explicit endpoint | Engineers can inspect `GET /tasks/{tid}` before creating external noise. |
+| Worktree cleanup | Cleanup after guardrails vs cleanup after PR | Cleanup after PR | A blocked or ready worktree remains available for local inspection. |
 
----
+## 4. Error Model
 
-#### 4. Error Model
-
-Errors follow the 404 / 422 / 409 conventions. Path IDs use 404. Body IDs use 422. Duplicate event creation returns 409 with the existing record in the body.
+Errors follow the 404, 409, and 422 conventions from the API contract.
 
 | Case | Status | Error |
 |---|---:|---|
-| Missing [resource] path ID | 404 | `[resource]_not_found` |
-| [Cross-session ownership violation in path] | 404 | `[resource]_not_found` |
-| Body references unknown [resource] | 422 | `[resource]_not_found_in_payload` |
-| Body references another session's [resource] | 422 | `[resource]_not_in_session` |
-| Duplicate event creation | 409 | `[event]_already_exist` |
-| Optimistic lock race | 409 | `version_conflict` |
+| Unknown job path ID | 404 | `job_not_found` |
+| Unknown task path ID | 404 | `task_not_found` |
+| Dispatch called after the first accepted dispatch | 409 | `already_dispatched` |
+| PR already exists for a task | 409 | `pr_already_exists` |
+| PR requested before task status is `ready` | 422 | `task_not_ready` |
 
----
+FastAPI returns validation details for missing request fields. Application errors use `{"detail": "<error_code>"}`.
 
-#### 5. AI Usage Log
+## 5. AI Usage, Verification, and Runbook
 
-We used AI as a reasoning partner, not only as a code generator.
+We used AI as a coding worker on two independent branches and kept commits scoped to behavior.
 
-Example prompts used during design:
+**Example prompts used during design**
 
-- "[question about failure modes]"
-- "[question that challenged my initial approach]"
-- "[comparison prompt, A vs B for X]"
-
-Every AI-generated file went through `ruff check`, `uv run pytest`, and a manual diff scan. No AI output was committed without a test covering the specific behavior.
+- "Implement models, routes, and store in the routes worktree, stopping before commit."
+- "Implement regex guardrails in the guardrails worktree, reading AGENTS.md for severity."
+- "After merge, wire dispatch with ThreadPoolExecutor, diff collection, guardrails, and PR cleanup."
 
 | Part | Verification |
 |------|--------------|
-| Domain models | Type-checked by Pydantic |
-| [File/component] | [how it was verified] |
-| README | Cross-checked against route decorators, models, and tests |
+| Domain models and route contract | `tests/test_routes.py` checks response fields and state transitions. |
+| Guardrails | `tests/test_guardrails.py` checks R4, R5, clean diffs, and AGENTS.md severity loading. |
+| README | Cross-checked against `SPEC.md`, route decorators, models, and tests. |
 
----
+**How to Run**
 
-#### 6. If More Time
-
-Each item below names what the extension enables, not just what it is. Where the extension path already exists in the schema, this section says so explicitly.
-
-- **Real auth**, replace the hardcoded token with JWT or API key validation.
-- **MySQL / PostgreSQL**, swap the current DB for a real one via docker-compose, add migrations and indexes.
-- **[Feature]**, [one sentence on what it enables].
-- **Multi-tenant**, `[field]` already in schema, add `[config file]` per tenant, no route changes needed.
-- **Observability**, push `trace_id` spans to [system], ties into [downstream metric].
-- **Recompute**, needed when [config source] changes. The current design stores results as immutable audit events.
-
----
-
-#### How to Run
-
-##### Setup
+Run with credentials when Claude and GitHub CLI are available, or run tests without credentials for the deterministic path.
 
 ```bash
 uv sync
 uv run pytest
-uv run fastapi dev src/main.py
+uv run ruff check src tests
+uv run uvicorn src.main:app --host 127.0.0.1 --port 8000
 ```
 
-Swagger UI, http://localhost:PORT/docs
+Swagger UI is available at `http://localhost:8000/docs`.
 
-##### Auth
+**If More Time**
 
-All requests require an `Authorization` header. Any bearer value is accepted. There is no real token validation in local dev.
-
-```bash
--H "Authorization: Bearer <any>"
-```
-
-##### LLM
-
-[One sentence, what happens with vs without credentials.]
-
-##### [Workflow name]
-
-```bash
-# 1. [create session/workspace]
-RESOURCE=$(curl -s -X POST localhost:8000/[endpoint] \
-  -H "Content-Type: application/json" \
-  -d '[payload]' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['id'])")
-
-# 2. [generate plan/sub-resource]
-SUB=$(curl -s -X POST localhost:8000/[endpoint]/$RESOURCE/[sub] \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)[0]['id'])")
-
-# 3. [core step, demonstrates the main feature]
-curl -s -X POST localhost:8000/[endpoint]/$RESOURCE/[action] \
-  | python3 -m json.tool
-
-# 4. [readiness or full state]
-curl -s localhost:8000/[endpoint]/$RESOURCE | python3 -m json.tool
-```
-
-Expected, [what the output shows and why].
-```
+- **Durable storage**, replace the in-memory dict with PostgreSQL through docker-compose and add migrations.
+- **Real auth**, add JWT or API key validation before job creation and PR creation.
+- **Queue-backed execution**, move task execution from local threads to a worker queue with retry visibility.
+- **Observability**, export `trace_id` spans to OpenTelemetry and connect them to PR throughput metrics.
