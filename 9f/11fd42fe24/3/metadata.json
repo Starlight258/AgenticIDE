@@ -1,0 +1,61 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "9f11fd42fe24",
+  "session_id": "c385158b-d0c3-4ba2-a285-8d004d0cd78d",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-16T13:59:36.043093Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "_shared/AGENTS.md",
+    "_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md",
+    "_shared/README_5sections.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "0e2eea27dd57",
+  "token_usage": {
+    "input_tokens": 3,
+    "cache_creation_tokens": 21337,
+    "cache_read_tokens": 0,
+    "output_tokens": 366,
+    "api_call_count": 1
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-16T13:59:36.040777Z",
+    "agent_lines": 0,
+    "agent_removed": 1734,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 57,
+    "total_committed": 0,
+    "total_lines_changed": 3181,
+    "agent_percentage": 54.51116001257466,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 480,
+      "user_lines_removed": 57,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 52,
+        "_shared/AGENTS.md": 8,
+        "_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md": 1,
+        "_shared/README_5sections.md": 92,
+        "_shared/fastapi-patterns.md": 45,
+        "_shared/todo_list.md": 265,
+        "case-01-session-backend/.claude/settings.local.json": 7,
+        "case-03-context/.claude/settings.local.json": 10
+      },
+      "user_removed_per_file": {
+        "_shared/README_5sections.md": 57
+      }
+    }
+  ]
+}
