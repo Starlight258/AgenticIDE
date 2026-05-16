@@ -1,0 +1,29 @@
+설계랑 구현할 때 이 repo가 fastapi 상으로 best practice같은데 내 case study에서 오버엔지니어링 하지 않고 적용할 부분 있을까? 적용한다면 어떻게 적용하게 하는게 좋을까? 
+ FastAPI (Python)
+⭐ 압도적 1위 — 사실상 표준
+zhanymkanov/fastapi-best-practices (17.2k stars, 일주일 전 업데이트)
+왜 이거: 단순 readme 아니라 "스타트업에서 몇 년 운영한 후 정리한" 실전 가이드. AGENTS.md 파일도 함께 제공 — AI agent용 머신 리더블 포맷이라 Cursor/Claude Code에서 바로 룰로 쓸 수 있음. DH가 AGENTS.md 강조하는 거 생각하면 더 가치 있음.
+핵심 내용:
+
+프로젝트 구조 — Netflix Dispatch 방식. 도메인 기반 분리 (src/auth/, src/posts/ 등). 각 모듈에 router.py, schemas.py, models.py, service.py, dependencies.py 패턴
+async vs sync 라우트 — time.sleep을 async 라우트에서 쓰는 게 왜 치명적인지, threadpool 동작 원리
+Pydantic 광범위 사용 — Field(min_length=..., max_length=..., pattern=...), EmailStr, AnyUrl 활용
+Custom BaseModel — 글로벌 datetime serializer 등 표준 형식 강제
+Dependencies — DI를 단순 의존성 주입이 아니라 request validation 도구로 쓰는 법. dependency chaining + caching
+BackgroundTasks vs Celery — 어떤 작업을 어디 두는지 명확한 기준 표
+DB 네이밍 컨벤션 — snake_case, _at/_date suffix, 모듈 prefix
+SQL-first, Pydantic-second — 복잡한 join은 DB에서, 응답 nested object도 DB에서 JSON aggregate
+httpx + ASGITransport — 비동기 테스트 클라이언트 셋업
+dependency_overrides — 테스트에서 monkeypatch 대신 의존성 교체
+
+---
+
+가장 최신꺼인 @case-03-context/ 만 확인해줘
+
+---
+
+나는 이러한 프로젝트 규칙들이 새 프로젝트 만들때 적용되면 좋겠어. 그래서 @_shared/에 룰을 만들까 고민하기도했고 아니면 @_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md  ? 근데 저 파일은 너무 길어서 참조하는 식으로 하는게 좋을거같기도 해 그리고 나는 과제할때 /assignment-design 을 써서 codex 프롬프트를 만들고있어. 아님 skill로 말아야하나? 고민이야.
+
+---
+
+오케
