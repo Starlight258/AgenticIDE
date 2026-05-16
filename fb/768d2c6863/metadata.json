@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "fb768d2c6863",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "case-04-orchestrator/README.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/fb/768d2c6863/0/metadata.json",
+      "transcript": "/fb/768d2c6863/0/full.jsonl",
+      "content_hash": "/fb/768d2c6863/0/content_hash.txt",
+      "prompt": "/fb/768d2c6863/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 108,
+    "cache_creation_tokens": 130161,
+    "cache_read_tokens": 899840,
+    "output_tokens": 13174,
+    "api_call_count": 22
+  }
+}
