@@ -1,0 +1,13 @@
+@_shared/ 폴더 github에는 안올리고싶어
+
+---
+
+딴걸로 해줘
+
+---
+
+그냥 docs로 해줘
+
+---
+
+add gitignore로 해줘

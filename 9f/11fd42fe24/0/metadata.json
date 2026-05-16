@@ -1,0 +1,172 @@
+{
+  "cli_version": "0.6.1",
+  "checkpoint_id": "9f11fd42fe24",
+  "session_id": "a134cc45-4c08-4348-b7ad-e7301b4394d1",
+  "strategy": "manual-commit",
+  "created_at": "2026-05-16T13:59:35.649117Z",
+  "branch": "main",
+  "checkpoints_count": 4,
+  "files_touched": [
+    ".gitignore",
+    "_shared/.env.example",
+    "_shared/.gitignore.template",
+    "_shared/AGENTS.md",
+    "_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md",
+    "_shared/LESSONS_LEARNED.md",
+    "_shared/Makefile.template",
+    "_shared/PRE_SUBMIT_CHECKLIST.md",
+    "_shared/README_5sections.md",
+    "_shared/SETUP.md",
+    "_shared/agent-architecture.md",
+    "_shared/agents/builder.md",
+    "_shared/agents/reviewer.md",
+    "_shared/agents/tester.md"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-sonnet-4-6",
+  "turn_id": "6bcaac13dd51",
+  "token_usage": {
+    "input_tokens": 20,
+    "cache_creation_tokens": 26179,
+    "cache_read_tokens": 226513,
+    "output_tokens": 1584,
+    "api_call_count": 10
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-05-16T13:59:35.644794Z",
+    "agent_lines": 0,
+    "agent_removed": 3124,
+    "human_added": 12843,
+    "human_modified": 57,
+    "human_removed": 0,
+    "total_committed": 12843,
+    "total_lines_changed": 16024,
+    "agent_percentage": 19.495756365451822,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 480,
+      "user_lines_removed": 57,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 52,
+        "_shared/AGENTS.md": 8,
+        "_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md": 1,
+        "_shared/README_5sections.md": 92,
+        "_shared/fastapi-patterns.md": 45,
+        "_shared/todo_list.md": 265,
+        "case-01-session-backend/.claude/settings.local.json": 7,
+        "case-03-context/.claude/settings.local.json": 10
+      },
+      "user_removed_per_file": {
+        "_shared/README_5sections.md": 57
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 3294,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2,
+      "agent_lines_removed": 3181,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 52,
+        "_shared/.env.example": 2,
+        "_shared/.gitignore.template": 8,
+        "_shared/AGENTS.md": 69,
+        "_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md": 1491,
+        "_shared/LESSONS_LEARNED.md": 241,
+        "_shared/Makefile.template": 32,
+        "_shared/PRE_SUBMIT_CHECKLIST.md": 193,
+        "_shared/README_5sections.md": 275,
+        "_shared/SETUP.md": 70,
+        "_shared/agent-architecture.md": 697,
+        "_shared/agents/builder.md": 38,
+        "_shared/agents/reviewer.md": 65,
+        "_shared/agents/tester.md": 44,
+        "case-01-session-backend/.claude/settings.local.json": 7,
+        "case-03-context/.claude/settings.local.json": 10
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 3294,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2,
+      "agent_lines_removed": 3181,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 52,
+        "_shared/.env.example": 2,
+        "_shared/.gitignore.template": 8,
+        "_shared/AGENTS.md": 69,
+        "_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md": 1491,
+        "_shared/LESSONS_LEARNED.md": 241,
+        "_shared/Makefile.template": 32,
+        "_shared/PRE_SUBMIT_CHECKLIST.md": 193,
+        "_shared/README_5sections.md": 275,
+        "_shared/SETUP.md": 70,
+        "_shared/agent-architecture.md": 697,
+        "_shared/agents/builder.md": 38,
+        "_shared/agents/reviewer.md": 65,
+        "_shared/agents/tester.md": 44,
+        "case-01-session-backend/.claude/settings.local.json": 7,
+        "case-03-context/.claude/settings.local.json": 10
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 3294,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2,
+      "agent_lines_removed": 3181,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 52,
+        "_shared/.env.example": 2,
+        "_shared/.gitignore.template": 8,
+        "_shared/AGENTS.md": 69,
+        "_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md": 1491,
+        "_shared/LESSONS_LEARNED.md": 241,
+        "_shared/Makefile.template": 32,
+        "_shared/PRE_SUBMIT_CHECKLIST.md": 193,
+        "_shared/README_5sections.md": 275,
+        "_shared/SETUP.md": 70,
+        "_shared/agent-architecture.md": 697,
+        "_shared/agents/builder.md": 38,
+        "_shared/agents/reviewer.md": 65,
+        "_shared/agents/tester.md": 44,
+        "case-01-session-backend/.claude/settings.local.json": 7,
+        "case-03-context/.claude/settings.local.json": 10
+      }
+    },
+    {
+      "checkpoint_number": 5,
+      "user_lines_added": 3294,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2,
+      "agent_lines_removed": 3181,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 52,
+        "_shared/.env.example": 2,
+        "_shared/.gitignore.template": 8,
+        "_shared/AGENTS.md": 69,
+        "_shared/ASSIGNMENT_EXECUTION_PROTOCOL.md": 1491,
+        "_shared/LESSONS_LEARNED.md": 241,
+        "_shared/Makefile.template": 32,
+        "_shared/PRE_SUBMIT_CHECKLIST.md": 193,
+        "_shared/README_5sections.md": 275,
+        "_shared/SETUP.md": 70,
+        "_shared/agent-architecture.md": 697,
+        "_shared/agents/builder.md": 38,
+        "_shared/agents/reviewer.md": 65,
+        "_shared/agents/tester.md": 44,
+        "case-01-session-backend/.claude/settings.local.json": 7,
+        "case-03-context/.claude/settings.local.json": 10
+      }
+    }
+  ]
+}
