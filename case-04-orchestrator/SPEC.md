@@ -14,14 +14,19 @@
 | GET /jobs/{id}/tasks/{tid} | (없음) | Task: id, issue, status, worktree_path, diff, checks | 200 | 404 |
 | POST /jobs/{id}/tasks/{tid}/pr | (없음) | pr_url, branch, worktree_path (삭제됨) | 200 | 404, 409 (이미 PR 있음), 422 (status != "ready") |
 
-Task.status: `"queued"` → `"running"` → `"ready"` | `"blocked"` | `"failed"`
+**Status 흐름**
 
-Job.status: `"pending"` → `"dispatched"` → `"done"` | `"partial_failure"`
+| 모델 | 전이 |
+|---|---|
+| Task | `"queued"` → `"running"` → `"ready"` \| `"blocked"` \| `"failed"` |
+| Job | `"pending"` → `"dispatched"` → `"done"` \| `"partial_failure"` |
 
-Error response 형식 (RFC 7807):
-```
+**Error response** (RFC 7807)
+
+```json
 {"detail": "<error_code>"}
 ```
+
 error_code 목록: `job_not_found`, `already_dispatched`, `task_not_found`, `pr_already_exists`, `task_not_ready`
 
 > SPEC의 다른 결정이 이 표와 충돌하면 이 표가 우선한다.
@@ -113,15 +118,12 @@ Task 1—1 AgentResult (optional, 에이전트 완료 후 생성)
 
 ### 결정 1 — 에이전트 실행 방식: `claude -p` subprocess
 
-왜 이렇게 했냐면, 오케스트레이터의 가치는 worktree 스캐폴딩과 병렬 디스패치와 가드레일에 있다. 에이전트 루프를 직접 구현하면 오케스트레이터가 아니라 에이전트를 만드는 것이 된다. Claude Code는 이미 파일 읽기/쓰기/git 도구를 갖추고 있어서 다시 구현할 이유가 없다.
+오케스트레이터의 가치는 worktree 스캐폴딩, 병렬 디스패치, 가드레일에 있다. 에이전트 루프를 직접 구현하면 오케스트레이터가 아니라 에이전트를 만드는 것이 된다. Claude Code는 파일 읽기/쓰기/git 도구를 이미 갖추고 있어서 다시 구현할 이유가 없다.
 
-**전제 가정**: claude CLI가 설치된 환경에서만 실행된다. subprocess timeout 5분 내에 완료된다.
-
-**가정 깨질 시나리오**: 복잡한 이슈에서 claude -p가 5분을 초과하는 경우.
-
-**그때 다음 행동**: partial git diff 수거 시도 후 task.status = "failed". 재실행은 P2 엔드포인트 (`POST /tasks/{tid}/retry`).
-
-**테스트 전략**: claude CLI 없는 CI 환경을 위해 subprocess.run을 mock으로 대체하는 fixture를 conftest.py에 둔다. mock은 미리 준비한 diff 텍스트를 stdout으로 반환한다.
+- **전제 가정**: claude CLI 설치 환경, subprocess timeout 5분 이내 완료
+- **가정 깨질 시나리오**: 복잡한 이슈에서 claude -p가 5분 초과
+- **그때 다음 행동**: partial git diff 수거 후 `task.status = "failed"`. 재실행은 P2 (`POST /tasks/{tid}/retry`)
+- **테스트 전략**: CI 환경을 위해 `conftest.py`에서 `subprocess.run`을 mock으로 대체. mock은 미리 준비한 diff 텍스트를 반환
 
 ### 결정 2 — 병렬성: ThreadPoolExecutor + run_in_executor
 
@@ -132,41 +134,34 @@ Task 1—1 AgentResult (optional, 에이전트 완료 후 생성)
 | A | asyncio.create_subprocess_exec | native async, 스레드 오버헤드 없음 | stdout/stderr를 async stream으로 읽어야 해서 구현이 복잡해짐 |
 | B | ThreadPoolExecutor + run_in_executor | subprocess.run이 단순하고 mock이 쉬움 | 스레드 N개 소비 |
 
-**결정: B**. 왜 이렇게 했냐면, claude -p 결과를 스트리밍할 필요가 없다. 완료 후 git diff로 결과를 수거하면 충분하다. "fire and wait" 시맨틱에서는 subprocess.run + ThreadPoolExecutor가 더 단순하고 테스트가 쉽다.
+**결정: B**. claude -p 결과를 스트리밍할 필요가 없다. 완료 후 git diff로 수거하면 충분하다. "fire and wait" 시맨틱에서는 `subprocess.run + ThreadPoolExecutor`가 더 단순하고 테스트가 쉽다.
 
-**전제 가정**: 동시 task 수가 CPU 코어 수 범위 안에서 동작한다 (기본 max_workers=5).
-
-**가정 깨질 시나리오**: 100개 이슈를 한 번에 dispatch하는 경우, 스레드 폭발.
-
-**그때 다음 행동**: max_workers 환경변수로 노출, P2에서 Celery/asyncio queue로 전환.
+- **전제 가정**: 동시 task 수가 CPU 코어 수 범위 내 (기본 `max_workers=5`)
+- **가정 깨질 시나리오**: 100개 이슈를 한 번에 dispatch하는 경우 스레드 폭발
+- **그때 다음 행동**: `max_workers` 환경변수로 노출, P2에서 Celery/asyncio queue로 전환
 
 ### 결정 3 — 가드레일 시점: 자동 (dispatch flow에 포함)
 
-왜 이렇게 했냐면, 에이전트가 만든 diff를 가드레일 없이 방치하는 상태가 필요 없다. 에이전트 완료 즉시 AGENTS.md 규칙을 체크해서 task status를 `"ready"` 또는 `"blocked"`로 확정한다.
+에이전트가 만든 diff를 가드레일 없이 방치하는 상태가 필요 없다. 에이전트 완료 즉시 AGENTS.md 규칙을 체크해서 task status를 `"ready"` 또는 `"blocked"`로 확정한다.
 
-**전제 가정**: 가드레일이 항상 같은 diff에 대해 같은 결과를 반환한다 (regex 기반이라 결정론적).
-
-**가정 깨질 시나리오**: 가드레일이 없음 (해당 없음, regex는 항상 결정론적).
+- **전제 가정**: 가드레일은 regex 기반이라 항상 결정론적
+- **가정 깨질 시나리오**: 해당 없음
 
 ### 결정 4 — worktree 수명: 유지 후 명시적 PR 생성 시 삭제
 
-왜 이렇게 했냐면, 가드레일이 통과해도 로직 오류가 있을 수 있다. 엔지니어가 직접 확인한 뒤 PR을 트리거해야 한다.
+가드레일이 통과해도 로직 오류가 있을 수 있다. 엔지니어가 직접 확인한 뒤 PR을 트리거해야 한다.
 
-**전제 가정**: 엔지니어가 diff를 GET /tasks/{tid}로 조회하고 판단한 후 PR을 트리거한다.
-
-**가정 깨질 시나리오**: 엔지니어가 PR 없이 작업을 포기하는 경우, worktree가 디스크에 쌓인다.
-
-**그때 다음 행동**: P2 — DELETE /jobs/{id}/tasks/{tid}로 worktree 수동 삭제 엔드포인트 추가.
+- **전제 가정**: 엔지니어가 `GET /tasks/{tid}`로 diff를 조회하고 판단한 후 PR을 트리거
+- **가정 깨질 시나리오**: 엔지니어가 PR 없이 작업을 포기하는 경우, worktree가 디스크에 쌓임
+- **그때 다음 행동**: P2 — `DELETE /jobs/{id}/tasks/{tid}`로 worktree 수동 삭제 엔드포인트 추가
 
 ### 결정 5 — PR 트리거: 명시적
 
-PR을 자동으로 올리면 검토하지 않은 코드가 PR로 쌓여서 노이즈가 된다. 엔지니어가 `POST /tasks/{tid}/pr`을 직접 호출해야 `gh pr create`가 실행된다.
+PR을 자동으로 올리면 검토하지 않은 코드가 PR로 쌓여 노이즈가 된다. 엔지니어가 `POST /tasks/{tid}/pr`을 직접 호출해야 `gh pr create`가 실행된다.
 
-**전제 가정**: `gh` CLI가 설치되어 있고 GitHub 인증이 되어있다.
-
-**가정 깨질 시나리오**: gh CLI 없는 환경.
-
-**그때 다음 행동**: branch 이름 반환으로 fallback. 에러 코드 `gh_cli_not_found`로 명확히 구분.
+- **전제 가정**: `gh` CLI 설치, GitHub 인증 완료
+- **가정 깨질 시나리오**: gh CLI 없는 환경
+- **그때 다음 행동**: branch 이름 반환으로 fallback. 에러 코드 `gh_cli_not_found`로 명확히 구분
 
 ---
 
