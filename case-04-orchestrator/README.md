@@ -24,7 +24,7 @@ flowchart TD
     ENG --> J1
 
     subgraph J1["POST /jobs → 201"]
-        A1["brand 검증\nrepo_path 존재 확인\nJob 생성 (status: pending)"]:::det
+        A1["brand 검증 (Literal enum)\nJob 생성 (status: pending)"]:::det
     end
 
     J1 --> J2
@@ -49,7 +49,7 @@ flowchart TD
 
     J3 --> J4
 
-    subgraph J4["POST /tasks/{tid}/pr → 200"]
+    subgraph J4["POST /jobs/{id}/tasks/{tid}/pr → 200"]
         D1["status != ready → 422"]:::det
         D2["gh pr create 실행"]:::det
         D3["git worktree remove"]:::det
@@ -186,3 +186,6 @@ Swagger UI is available at `http://localhost:8000/docs`.
 - **Real auth**, add JWT or API key validation before job creation and PR creation.
 - **Queue-backed execution**, move task execution from local threads to a worker queue with retry visibility.
 - **Observability**, export `trace_id` spans to OpenTelemetry and connect them to PR throughput metrics.
+- **Blocked task retry**, add `POST /jobs/{id}/tasks/{tid}/retry` so engineers can trigger a second agent run after manually fixing a blocked worktree.
+- **Worktree cleanup**, add `DELETE /jobs/{id}/tasks/{tid}` so engineers can reclaim disk when they abandon a task without creating a PR.
+- **Streaming progress**, expose an SSE endpoint so polling is not needed during long agent runs.
