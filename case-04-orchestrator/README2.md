@@ -69,14 +69,17 @@ flowchart TD
 3. Claude CLI and GitHub CLI run on the same machine as the API server.
 4. A `BLOCK` guardrail failure makes a task `blocked`. `WARN` and `INFO` checks remain review evidence.
 5. `trace_id` identifies the job now and can later map to OpenTelemetry spans.
+6. `repo_path` is accepted as caller-provided. In production, the service should validate it against a configured `REPO_BASE_DIR` allowlist and reject arbitrary filesystem paths with 422.
 
 ---
 
 ## 2. Domain Model
 
-```text
-Job 1—* Task 1—* GuardrailCheck
-Task 1—1 AgentResult (optional, created after agent completes)
+```mermaid
+erDiagram
+    Job ||--o{ Task : "has many"
+    Task ||--o{ GuardrailCheck : "has many"
+    Task ||--o| AgentResult : "has one (optional)"
 ```
 
 - `Job`, groups issues for one repository and brand; carries `status`, `trace_id`, and `created_at`
@@ -132,6 +135,8 @@ Delaying guardrail checks would leave generated diffs without a merge gate.
 | Option B: automatic check after diff collection | Every finished task immediately receives R1 to R5 results. | The policy must stay deterministic and fast. |
 
 **Decision, Option B.** The dispatch flow collects `git diff`, runs `run_checks(diff, brand)`, and sets task status to `ready`, `blocked`, or `failed`. This assumption holds because guardrail checks are regex-based and complete in milliseconds.
+
+Five rules run on every diff. R4 detects `print(` calls and emits BLOCK ("use efood.logging per AGENTS.md R4"). R5 detects `requests.get/post/...` and emits BLOCK ("use efood.http_client per AGENTS.md R5"). Severities are read from `{brand}/AGENTS.md` at check time, not hardcoded.
 
 ### Other decisions
 
