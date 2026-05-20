@@ -1,0 +1,243 @@
+# Worktree Orchestrator
+
+An engineer dispatches a batch of issues into isolated Claude Code tasks and reviews each diff before opening a PR. Not a coding agent. The orchestration layer that coordinates worktrees, subprocess execution, and AGENTS.md guardrails around an existing repository.
+
+---
+
+## 1. Problem & Approach
+
+**What this replaces**: Engineers running five AI coding tasks one at a time in the same working directory, managing branches manually and waiting for each task before starting the next.
+
+**API surface**
+
+- `POST /jobs`, creates a job with title, issues, repo_path, and brand
+- `POST /jobs/{id}/dispatch`, creates one worktree per issue, runs Claude in parallel, and returns 202 immediately
+- `GET /jobs/{id}`, returns full job state with task diffs and guardrail results; poll this until tasks are ready
+- `GET /jobs/{id}/tasks/{tid}`, returns one task
+- `POST /jobs/{id}/tasks/{tid}/pr`, opens a PR for a ready task and removes its worktree
+
+**Architecture**
+
+The service owns workflow state, worktree setup, subprocess execution, and guardrail results. Claude Code runs inside each worktree and edits files; the service collects the diff after exit.
+
+```mermaid
+flowchart TD
+    ENG([엔지니어])
+    ENG --> J1
+
+    subgraph J1["POST /jobs → 201"]
+        A1["brand 검증 (Literal enum)\nJob 생성 (status: pending)"]:::det
+    end
+
+    J1 --> J2
+
+    subgraph J2["POST /jobs/{id}/dispatch → 202"]
+        B0["threading.Lock\nstatus != pending → 409"]:::det
+        B1["이슈별 worktree 생성\ngit worktree add"]:::det
+        B2["ThreadPoolExecutor\nsubprocess claude -p per worktree"]:::llm
+        B3["git diff로 변경사항 수거"]:::det
+        B4["run_checks(diff, brand)\nAGENTS.md 기반 regex"]:::det
+        B5{"BLOCK 있나?"}:::det
+        B0 --> B1 --> B2 --> B3 --> B4 --> B5
+        B5 -->|있음| B6["status: blocked"]:::det
+        B5 -->|없음| B7["status: ready"]:::det
+    end
+
+    J2 --> J3
+
+    subgraph J3["GET /jobs/{id} → 200"]
+        C1["전체 상태 반환\ntasks → checks + diff (부분 결과 포함)"]:::det
+    end
+
+    J3 --> J4
+
+    subgraph J4["POST /jobs/{id}/tasks/{tid}/pr → 200"]
+        D1["status != ready → 422"]:::det
+        D2["gh pr create 실행"]:::det
+        D3["git worktree remove"]:::det
+        D1 --> D2 --> D3
+    end
+
+    classDef det fill:#e8f4f8,stroke:#2196F3,color:#000
+    classDef llm fill:#fff3e0,stroke:#FF9800,color:#000
+```
+
+**Assumptions**
+
+1. In-memory storage fits a single review session. PostgreSQL should replace it when jobs need to survive process restarts.
+2. `brand` accepts `efood`, `glovo`, and `talabat`. The guardrail loader first checks `{brand}/AGENTS.md`, then root `AGENTS.md`.
+3. Claude CLI and GitHub CLI run on the same machine as the API server.
+4. A `BLOCK` guardrail failure makes a task `blocked`. `WARN` and `INFO` checks remain review evidence.
+5. `trace_id` identifies the job now and can later map to OpenTelemetry spans.
+
+---
+
+## 2. Domain Model
+
+```text
+Job 1—* Task 1—* GuardrailCheck
+Task 1—1 AgentResult (optional, created after agent completes)
+```
+
+- `Job`, groups issues for one repository and brand; carries `status`, `trace_id`, and `created_at`
+- `Task`, represents one issue, one branch, and one worktree; tracks execution status
+- `AgentResult`, stores the final diff and changed file list after Claude exits
+- `GuardrailCheck`, records one rule result: `ruleId`, `severity`, `result`, and `reason`
+
+**Trust Boundaries** (5 rows)
+
+| Boundary | AI role | Deterministic code role |
+|---|---|---|
+| Task worktree | Claude Code edits files inside one isolated worktree via `claude -p` subprocess | The service creates the branch and worktree path; collects diff after exit |
+| Dispatch race | None | `threading.Lock` makes the `pending` to `dispatched` transition atomic |
+| Guardrail policy | None | Regex checks run against diffs; severity comes from `{brand}/AGENTS.md` |
+| Readiness gate | None | Any failed `BLOCK` check sets the task to `blocked`; otherwise `ready` |
+| PR and cleanup | None | The API requires `ready` status, calls `gh pr create`, and removes the worktree |
+
+---
+
+## 3. Design Decisions
+
+Three decisions shaped this design. Each involved a non-obvious trade-off.
+
+### Parallel worktrees, how tasks avoid file conflicts
+
+Running every issue in the original repository would serialize agent work or cause edit conflicts between concurrent Claude processes.
+
+| | How it works | Risk |
+|---|---|---|
+| Option A: shared checkout | Every task runs in the same working directory. | Concurrent agents overwrite each other. |
+| Option B: one worktree per task | Each issue gets a branch and a `wt-{job}` path. | Disk cleanup must happen after PR creation. |
+
+**Decision, Option B.** The service creates a separate worktree for each task before dispatching. This keeps agent file writes isolated and leaves reviewable branches behind.
+
+### Subprocess execution, how the API stays responsive
+
+`claude -p` blocks until the agent finishes, but the HTTP server must still answer polling requests during dispatch.
+
+| | How it works | Risk |
+|---|---|---|
+| Option A: `asyncio.create_subprocess_exec` | Native async, no thread overhead. | Reading stdout as an async stream adds implementation complexity. |
+| Option B: `ThreadPoolExecutor` via `run_in_executor` | Schedules blocking calls in threads; route returns 202 immediately. | A large batch can exhaust the thread pool. |
+
+**Decision, Option B.** Claude output is collected via `git diff` after exit, not streamed. The fire-and-wait semantic makes `subprocess.run` with a thread pool simpler and easier to mock in tests. The current executor uses five workers, which matches the intended batch size. A queue worker should replace it when job sizes grow.
+
+### Guardrails, when readiness gets decided
+
+Delaying guardrail checks would leave generated diffs without a merge gate.
+
+| | How it works | Risk |
+|---|---|---|
+| Option A: manual check endpoint | Reviewers trigger checks after inspection. | A task can appear done before policy runs. |
+| Option B: automatic check after diff collection | Every finished task immediately receives R1 to R5 results. | The policy must stay deterministic and fast. |
+
+**Decision, Option B.** The dispatch flow collects `git diff`, runs `run_checks(diff, brand)`, and sets task status to `ready`, `blocked`, or `failed`. This assumption holds because guardrail checks are regex-based and complete in milliseconds.
+
+### Other decisions
+
+| Background | Options | Decision | Reason |
+|---|---|---|---|
+| Job state | In-memory dict vs database | In-memory dict | The assignment targets one process; the persistence swap path is documented in §6. |
+| PR timing | Automatic PR vs explicit endpoint | Explicit endpoint | Engineers inspect `GET /tasks/{tid}` before creating external noise. |
+| Worktree cleanup | After guardrails vs after PR | After PR | A blocked or ready worktree stays available for local inspection. |
+
+---
+
+## 4. Error Model
+
+Errors follow the 404 / 422 / 409 conventions. Path IDs use 404. Precondition failures use 422. Duplicate operations return 409.
+
+| Case | Status | Error |
+|---|---:|---|
+| Unknown job path ID | 404 | `job_not_found` |
+| Unknown task path ID | 404 | `task_not_found` |
+| Dispatch called after first accepted dispatch | 409 | `already_dispatched` |
+| PR already exists for a task | 409 | `pr_already_exists` |
+| PR requested before task status is `ready` | 422 | `task_not_ready` |
+
+FastAPI returns validation details for missing request fields. Application errors use `{"detail": "<error_code>"}`.
+
+---
+
+## 5. AI Usage Log
+
+We used AI as a coding worker on two independent branches and kept commits scoped to behavior.
+
+Example prompts used during design:
+
+- "Implement models, routes, and store in the routes worktree, stopping before commit."
+- "Implement regex guardrails in the guardrails worktree, reading AGENTS.md for severity."
+- "After merge, wire dispatch with ThreadPoolExecutor, diff collection, guardrails, and PR cleanup."
+
+Every AI-generated file went through `ruff check`, `uv run pytest`, and a manual diff scan. No AI output was committed without a test covering the specific behavior.
+
+| Part | Verification |
+|------|--------------|
+| Domain models and route contract | `tests/test_routes.py` checks response fields and state transitions |
+| Guardrails | `tests/test_guardrails.py` checks R4, R5, clean diffs, and AGENTS.md severity loading |
+| README | Cross-checked against SPEC.md, route decorators, models, and tests |
+
+---
+
+## 6. If More Time
+
+**Known limitations** — gaps in the current implementation that a reviewer should be aware of.
+
+- **No authentication**, any request is accepted without a token.
+- **In-memory store**, all job and task data is lost on restart.
+- **Fixed thread pool**, five workers handle concurrent tasks; batches larger than five queue behind running tasks.
+
+Each item below names what the extension enables, not just what it is.
+
+- **Durable storage**, replace the in-memory dict with PostgreSQL through docker-compose and add migrations.
+- **Real auth**, add JWT or API key validation before job creation and PR creation.
+- **Queue-backed execution**, move task execution from local threads to a worker queue with retry visibility and backpressure; `max_workers` is already exposed as an environment variable as a first step.
+- **Observability**, export `trace_id` spans to OpenTelemetry and connect them to PR throughput metrics.
+- **Blocked task retry**, add `POST /jobs/{id}/tasks/{tid}/retry` so engineers can trigger a second agent run after manually fixing a blocked worktree.
+- **Worktree cleanup**, add `DELETE /jobs/{id}/tasks/{tid}` so engineers can reclaim disk when abandoning a task without creating a PR.
+
+---
+
+## How to Run
+
+Run with credentials when Claude and GitHub CLI are available, or run tests without credentials for the deterministic path.
+
+```bash
+uv sync
+uv run pytest
+uv run ruff check src tests
+uv run uvicorn src.main:app --host 127.0.0.1 --port 8000
+```
+
+Swagger UI, http://localhost:8000/docs
+
+### Auth
+
+No token validation in local dev. Any request is accepted without an `Authorization` header.
+
+### LLM
+
+With `claude` CLI available, `POST /jobs/{id}/dispatch` runs real Claude Code subprocesses per worktree. Without it, tasks move to `failed` status. The test suite mocks subprocess calls and does not require the CLI.
+
+### Workflow
+
+```bash
+# 1. create job
+curl -s -X POST localhost:8000/jobs \
+  -H "Content-Type: application/json" \
+  -d '{"title":"morning batch","issues":["fix login bug"],"repo_path":"/path/to/repo","brand":"efood"}' \
+  -o /tmp/job.json
+JOB=$(python3 -c "import json; print(json.load(open('/tmp/job.json'))['id'])")
+
+# 2. dispatch — returns 202, tasks run in background
+curl -s -X POST localhost:8000/jobs/$JOB/dispatch -o /tmp/dispatch.json
+
+# 3. poll until tasks complete
+curl -s localhost:8000/jobs/$JOB | python3 -m json.tool
+
+# 4. open PR for a ready task
+TASK=$(python3 -c "import json; tasks=json.load(open('/tmp/dispatch.json'))['tasks']; print(next(t['id'] for t in tasks))")
+curl -s -X POST localhost:8000/jobs/$JOB/tasks/$TASK/pr | python3 -m json.tool
+```
+
+Expected: a `pr_url` in the response, task status moves to `done`, and the worktree is removed from disk.
